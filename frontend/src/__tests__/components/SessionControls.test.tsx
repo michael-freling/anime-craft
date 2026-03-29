@@ -18,7 +18,7 @@ describe('SessionControls', () => {
 
   it('renders submit and discard buttons', () => {
     render(<SessionControls {...defaultProps} />);
-    expect(screen.getByText('Submit Drawing')).toBeInTheDocument();
+    expect(screen.getByText('Submit')).toBeInTheDocument();
     expect(screen.getByText('Discard')).toBeInTheDocument();
   });
 
@@ -34,7 +34,7 @@ describe('SessionControls', () => {
     const onSubmit = vi.fn();
     render(<SessionControls {...defaultProps} onSubmit={onSubmit} />);
 
-    await user.click(screen.getByText('Submit Drawing'));
+    await user.click(screen.getByText('Submit'));
     expect(onSubmit).toHaveBeenCalled();
   });
 

@@ -28,7 +28,7 @@ function SessionControls({
         disabled={isSubmitting}
         data-testid="submit-btn"
       >
-        {isSubmitting ? "Submitting..." : "Submit Drawing"}
+        {isSubmitting ? "Submitting..." : "Submit"}
       </button>
       <button
         className="session-btn session-btn-discard"

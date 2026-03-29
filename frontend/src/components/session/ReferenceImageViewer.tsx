@@ -6,18 +6,18 @@ interface ReferenceImageViewerProps {
 }
 
 function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
-  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    setImagePath(null);
+    setTitle(null);
 
     GetReference(referenceId)
       .then((ref) => {
         if (!cancelled) {
-          setImagePath(ref.filePath);
+          setTitle(ref.title);
         }
       })
       .catch((e) => {
@@ -39,7 +39,7 @@ function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
     );
   }
 
-  if (!imagePath) {
+  if (!title) {
     return (
       <div className="session-loading" data-testid="reference-loading">
         Loading reference...
@@ -48,13 +48,9 @@ function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
   }
 
   return (
-    <img
-      src={imagePath}
-      alt="Reference"
-      className="session-reference-img"
-      data-testid="reference-image"
-      style={{ maxWidth: 500 }}
-    />
+    <div className="reference-placeholder" data-testid="reference-placeholder">
+      <span className="reference-placeholder-text">{title}</span>
+    </div>
   );
 }
 
