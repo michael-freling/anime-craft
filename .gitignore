@@ -1,0 +1,11 @@
+bin/
+node_modules/
+dist/
+*.exe
+build/bin/
+frontend/bindings/
+.DS_Store
+*.db
+.task
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe

@@ -1,0 +1,51 @@
+version: '3'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+vars:
+  APP_NAME: "anime-craft"
+  BIN_DIR: "bin"
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+tasks:
+  build:
+    summary: Builds the application
+    cmds:
+      - task: "{{OS}}:build"
+
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{OS}}:package"
+
+  run:
+    summary: Runs the application
+    cmds:
+      - task: "{{OS}}:run"
+
+  dev:
+    summary: Runs the application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  dev:wsl:
+    summary: Cross-compile Windows exe and start Vite dev server for WSL→Windows development
+    deps:
+      - common:install:frontend:deps
+    silent: true
+    cmds:
+      - wails3 generate bindings || true
+      - GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe .
+      - |
+        echo ""
+        echo "Build complete. Run from Windows PowerShell:"
+        echo '  $env:FRONTEND_DEVSERVER_URL="http://localhost:{{.VITE_PORT}}"'
+        echo '  & "\\wsl.localhost\Ubuntu-24.04\home\michael\src\github.com\michael-freling\anime-craft\anime-craft.exe"'
+        echo ""
+        echo "Starting Vite dev server on port {{.VITE_PORT}}..."
+      - cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}}
+
