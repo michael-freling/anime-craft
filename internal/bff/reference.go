@@ -88,6 +88,62 @@ func (s *ReferenceService) AddReference(title string, difficulty string, imageDa
 	return ref, nil
 }
 
+// AddReferenceByFilePath adds a reference by copying an image file from the given path.
+// This avoids sending large base64 data through Wails' URL-parameter-based RPC transport.
+func (s *ReferenceService) AddReferenceByFilePath(title string, difficulty string, filePath string) (model.ReferenceImage, error) {
+	slog.Info("AddReferenceByFilePath called", "title", title, "difficulty", difficulty, "filePath", filePath)
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		slog.Error("failed to read source file", "method", "AddReferenceByFilePath", "path", filePath, "error", err)
+		return model.ReferenceImage{}, fmt.Errorf("read source file: %w", err)
+	}
+
+	if len(data) == 0 {
+		return model.ReferenceImage{}, fmt.Errorf("file is empty")
+	}
+
+	id := uuid.New().String()
+
+	// Determine extension from source file
+	ext := filepath.Ext(filePath)
+	if ext == "" {
+		ext = ".png"
+	}
+
+	relPath := filepath.Join("references", id+ext)
+	absPath := filepath.Join(s.dataDir, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		slog.Error("failed to create references directory", "method", "AddReferenceByFilePath", "directory", filepath.Dir(absPath), "error", err)
+		return model.ReferenceImage{}, fmt.Errorf("create references directory: %w", err)
+	}
+
+	if err := os.WriteFile(absPath, data, 0o644); err != nil {
+		slog.Error("failed to write reference image file", "method", "AddReferenceByFilePath", "filePath", absPath, "error", err)
+		return model.ReferenceImage{}, fmt.Errorf("write reference image file: %w", err)
+	}
+
+	ref := model.ReferenceImage{
+		ID:           id,
+		Title:        title,
+		FilePath:     relPath,
+		ExerciseMode: "line_work",
+		Difficulty:   difficulty,
+		Tags:         "",
+		CreatedAt:    time.Now(),
+	}
+
+	if err := s.repo.Create(ref); err != nil {
+		// Clean up the file if DB insert fails
+		_ = os.Remove(absPath)
+		slog.Error("failed to create reference record", "method", "AddReferenceByFilePath", "title", title, "referenceID", id, "error", err)
+		return model.ReferenceImage{}, fmt.Errorf("create reference record: %w", err)
+	}
+
+	return ref, nil
+}
+
 func (s *ReferenceService) DeleteReference(id string) error {
 	ref, err := s.repo.Get(id)
 	if err != nil {

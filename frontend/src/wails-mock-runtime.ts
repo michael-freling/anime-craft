@@ -161,6 +161,21 @@ const FUNCTION_IDS: Record<number, (...args: any[]) => any> = {
     return newRef;
   },
 
+  // ReferenceService.AddReferenceByFilePath(title, difficulty, filePath) — referenceservice.js
+  2302175046: (title: string, difficulty: string, _filePath: string) => {
+    const newRef = {
+      id: `ref-upload-${Date.now()}`,
+      title,
+      filePath: `references/uploads/${title}.png`,
+      exerciseMode: "line_work",
+      difficulty,
+      tags: "",
+      createdAt: new Date().toISOString(),
+    };
+    mockReferences.push(newRef);
+    return newRef;
+  },
+
   // ReferenceService.DeleteReference(id) — referenceservice.js
   3519923638: (id: string) => {
     const idx = mockReferences.findIndex((r) => r.id === id);

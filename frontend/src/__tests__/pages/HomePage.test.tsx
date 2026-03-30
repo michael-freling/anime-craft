@@ -29,6 +29,13 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/r
       tags: 'body',
     },
   ]),
+  AddReferenceByFilePath: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('@wailsio/runtime', () => ({
+  Dialogs: {
+    OpenFile: vi.fn().mockResolvedValue(''),
+  },
 }));
 
 describe('HomePage', () => {

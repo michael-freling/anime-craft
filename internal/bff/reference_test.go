@@ -72,6 +72,88 @@ func TestReferenceService_AddReference_InvalidBase64(t *testing.T) {
 	assert.Contains(t, err.Error(), "decode base64")
 }
 
+func TestReferenceService_AddReferenceByFilePath(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create a source image file on disk
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "test-image.png")
+	imageBytes := []byte("fake-png-data-for-file-path-testing")
+	require.NoError(t, os.WriteFile(srcPath, imageBytes, 0o644))
+
+	ref, err := svc.AddReferenceByFilePath("File Path Image", "beginner", srcPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, ref.ID)
+	assert.Equal(t, "File Path Image", ref.Title)
+	assert.Equal(t, "beginner", ref.Difficulty)
+	assert.Equal(t, "line_work", ref.ExerciseMode)
+	assert.Equal(t, "", ref.Tags)
+	assert.Contains(t, ref.FilePath, "references/")
+	assert.Contains(t, ref.FilePath, ".png")
+
+	// Verify the file was copied
+	absPath := filepath.Join(dataDir, ref.FilePath)
+	data, err := os.ReadFile(absPath)
+	require.NoError(t, err)
+	assert.Equal(t, imageBytes, data)
+
+	// Verify the DB record
+	got, err := svc.GetReference(ref.ID)
+	require.NoError(t, err)
+	assert.Equal(t, ref.ID, got.ID)
+	assert.Equal(t, ref.Title, got.Title)
+}
+
+func TestReferenceService_AddReferenceByFilePath_FileNotFound(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	_, err := svc.AddReferenceByFilePath("Missing File", "beginner", "/nonexistent/path/image.png")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read source file")
+}
+
+func TestReferenceService_AddReferenceByFilePath_PreservesExtension(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create a JPEG source file
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "photo.jpg")
+	imageBytes := []byte("fake-jpeg-data")
+	require.NoError(t, os.WriteFile(srcPath, imageBytes, 0o644))
+
+	ref, err := svc.AddReferenceByFilePath("JPEG Image", "intermediate", srcPath)
+	require.NoError(t, err)
+	assert.Contains(t, ref.FilePath, ".jpg", "should preserve .jpg extension from source file")
+	assert.NotContains(t, ref.FilePath, ".png", "should not use .png when source is .jpg")
+
+	// Verify the file was copied with the correct extension
+	absPath := filepath.Join(dataDir, ref.FilePath)
+	data, err := os.ReadFile(absPath)
+	require.NoError(t, err)
+	assert.Equal(t, imageBytes, data)
+}
+
+func TestReferenceService_AddReferenceByFilePath_EmptyFile(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create an empty source file
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "empty.png")
+	require.NoError(t, os.WriteFile(srcPath, []byte{}, 0o644))
+
+	_, err := svc.AddReferenceByFilePath("Empty File", "beginner", srcPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file is empty")
+}
+
 func TestReferenceService_DeleteReference(t *testing.T) {
 	db := testDB(t)
 	dataDir := t.TempDir()
