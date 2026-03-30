@@ -1,8 +1,8 @@
 linters:
+  default: none
   enable:
     - govet
     - staticcheck
     - unused
     - errcheck
     - ineffassign
-    - gosimple

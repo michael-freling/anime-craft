@@ -24,7 +24,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.11.4
 
       - name: Test
         run: go test ./...
@@ -37,6 +37,20 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read Go version from go.mod
+        id: go-version
+        run: echo "version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - name: Generate Wails bindings
+        working-directory: .
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.11
+          wails3 generate bindings -clean=true -ts
 
       - uses: actions/setup-node@v4
         with:
