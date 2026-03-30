@@ -13,7 +13,7 @@ func testDB(t *testing.T) *DB {
 	t.Helper()
 	db, err := NewDB(":memory:")
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	require.NoError(t, db.RunMigrations())
 	return db
 }
