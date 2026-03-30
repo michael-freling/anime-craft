@@ -80,7 +80,7 @@ func (s *ReferenceService) AddReference(title string, difficulty string, imageDa
 
 	if err := s.repo.Create(ref); err != nil {
 		// Clean up the file if DB insert fails
-		os.Remove(absPath)
+		_ = os.Remove(absPath)
 		slog.Error("failed to create reference record", "method", "AddReference", "title", title, "referenceID", id, "error", err)
 		return model.ReferenceImage{}, fmt.Errorf("create reference record: %w", err)
 	}
