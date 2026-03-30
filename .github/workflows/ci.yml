@@ -21,6 +21,9 @@ jobs:
         with:
           go-version: ${{ steps.go-version.outputs.version }}
 
+      - name: Create frontend dist placeholder
+        run: mkdir -p frontend/dist
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
