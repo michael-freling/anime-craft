@@ -13,8 +13,11 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/s
   EndSession: (...args: any[]) => mockEndSession(...args),
 }));
 
+const mockGetReferenceImageData = vi.fn();
+
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
   GetReference: (...args: any[]) => mockGetReference(...args),
+  GetReferenceImageData: (...args: any[]) => mockGetReferenceImageData(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js', () => ({
@@ -46,6 +49,9 @@ describe('SessionPage', () => {
       title: 'Simple Face',
       filePath: 'references/face.png',
     });
+    mockGetReferenceImageData.mockResolvedValue(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+    );
   });
 
   it('renders loading state initially', () => {
@@ -60,7 +66,7 @@ describe('SessionPage', () => {
     renderSessionPage();
 
     await waitFor(() => {
-      expect(screen.getByTestId('reference-placeholder')).toBeInTheDocument();
+      expect(screen.getByTestId('reference-image')).toBeInTheDocument();
     });
 
     expect(screen.getByTestId('drawing-canvas')).toBeInTheDocument();

@@ -144,6 +144,37 @@ func (s *ReferenceService) AddReferenceByFilePath(title string, difficulty strin
 	return ref, nil
 }
 
+// GetReferenceImageData returns the base64-encoded image data for a reference.
+func (s *ReferenceService) GetReferenceImageData(referenceID string) (string, error) {
+	ref, err := s.repo.Get(referenceID)
+	if err != nil {
+		return "", fmt.Errorf("get reference: %w", err)
+	}
+
+	absPath := filepath.Join(s.dataDir, ref.FilePath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("read image file: %w", err)
+	}
+
+	// Determine MIME type from extension
+	ext := strings.ToLower(filepath.Ext(ref.FilePath))
+	mimeType := "image/png"
+	switch ext {
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ".gif":
+		mimeType = "image/gif"
+	case ".bmp":
+		mimeType = "image/bmp"
+	case ".webp":
+		mimeType = "image/webp"
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
+}
+
 func (s *ReferenceService) DeleteReference(id string) error {
 	ref, err := s.repo.Get(id)
 	if err != nil {

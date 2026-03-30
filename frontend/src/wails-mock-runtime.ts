@@ -197,6 +197,11 @@ const FUNCTION_IDS: Record<number, (...args: any[]) => any> = {
     return ref || mockReferences[0];
   },
 
+  // ReferenceService.GetReferenceImageData(referenceID) — referenceservice.js
+  2987014940: (_referenceID: string) => {
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+  },
+
   // ProgressService.GetProgressSummary() — progressservice.js
   79781105: () => ({
     totalSessions: 5,

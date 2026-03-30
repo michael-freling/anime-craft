@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/michael-freling/anime-craft/internal/repository"
@@ -152,6 +153,81 @@ func TestReferenceService_AddReferenceByFilePath_EmptyFile(t *testing.T) {
 	_, err := svc.AddReferenceByFilePath("Empty File", "beginner", srcPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file is empty")
+}
+
+func TestReferenceService_GetReferenceImageData(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create a reference with a real file
+	imageBytes := []byte("fake-png-data-for-testing")
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+	ref, err := svc.AddReference("Test Image", "beginner", imageBase64)
+	require.NoError(t, err)
+
+	// Happy path: get image data
+	dataURL, err := svc.GetReferenceImageData(ref.ID)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(dataURL, "data:image/png;base64,"),
+		"data URL should start with data:image/png;base64,")
+
+	// Verify the base64 payload decodes to the original bytes
+	parts := strings.SplitN(dataURL, ",", 2)
+	require.Len(t, parts, 2)
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	assert.Equal(t, imageBytes, decoded)
+}
+
+func TestReferenceService_GetReferenceImageData_NotFound(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	_, err := svc.GetReferenceImageData("nonexistent-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get reference")
+}
+
+func TestReferenceService_GetReferenceImageData_FileMissing(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create a reference with a file, then delete the file
+	imageBytes := []byte("ephemeral-image")
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+	ref, err := svc.AddReference("Ephemeral", "beginner", imageBase64)
+	require.NoError(t, err)
+
+	// Remove the file
+	absPath := filepath.Join(dataDir, ref.FilePath)
+	require.NoError(t, os.Remove(absPath))
+
+	_, err = svc.GetReferenceImageData(ref.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read image file")
+}
+
+func TestReferenceService_GetReferenceImageData_JPEGMimeType(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Create a JPEG reference via AddReferenceByFilePath
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "photo.jpg")
+	imageBytes := []byte("fake-jpeg-data")
+	require.NoError(t, os.WriteFile(srcPath, imageBytes, 0o644))
+
+	ref, err := svc.AddReferenceByFilePath("JPEG Image", "beginner", srcPath)
+	require.NoError(t, err)
+
+	dataURL, err := svc.GetReferenceImageData(ref.ID)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(dataURL, "data:image/jpeg;base64,"),
+		"JPEG file should produce data:image/jpeg MIME type")
 }
 
 func TestReferenceService_DeleteReference(t *testing.T) {
