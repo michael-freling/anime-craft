@@ -46,7 +46,7 @@ func main() {
 			application.NewService(bff.NewDrawingService(drawingRepo, dataDir)),
 			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)),
 			application.NewService(bff.NewProgressService()),
-			application.NewService(bff.NewReferenceService(refRepo)),
+			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),
 		},
 		Assets: application.AssetOptions{

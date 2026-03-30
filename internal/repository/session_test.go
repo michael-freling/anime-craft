@@ -57,7 +57,7 @@ func TestSessionRepository_Update(t *testing.T) {
 	session := model.Session{
 		ID:               "sess-002",
 		ReferenceImageID: "ref-001",
-		ExerciseMode:     "coloring",
+		ExerciseMode:     "line_work",
 		Status:           "in_progress",
 		StartedAt:        time.Now().Truncate(time.Second),
 	}

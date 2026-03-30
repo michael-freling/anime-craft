@@ -4,9 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ReferenceImagePicker from '../../components/session/ReferenceImagePicker';
 
 const mockListReferences = vi.fn();
+const mockAddReference = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
   ListReferences: (...args: any[]) => mockListReferences(...args),
+  AddReference: (...args: any[]) => mockAddReference(...args),
 }));
 
 describe('ReferenceImagePicker', () => {
@@ -30,17 +32,9 @@ describe('ReferenceImagePicker', () => {
     ]);
   });
 
-  it('shows hint when no mode selected', () => {
+  it('loads and displays line_work reference images on mount', async () => {
     render(
-      <ReferenceImagePicker mode={null} selectedRef={null} onSelectRef={vi.fn()} />
-    );
-
-    expect(screen.getByText('Select an exercise mode first')).toBeInTheDocument();
-  });
-
-  it('loads and displays reference images when mode is selected', async () => {
-    render(
-      <ReferenceImagePicker mode="line_work" selectedRef={null} onSelectRef={vi.fn()} />
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
     );
 
     await waitFor(() => {
@@ -52,7 +46,7 @@ describe('ReferenceImagePicker', () => {
 
   it('highlights selected reference', async () => {
     render(
-      <ReferenceImagePicker mode="line_work" selectedRef="ref-001" onSelectRef={vi.fn()} />
+      <ReferenceImagePicker selectedRef="ref-001" onSelectRef={vi.fn()} />
     );
 
     await waitFor(() => {
@@ -68,7 +62,7 @@ describe('ReferenceImagePicker', () => {
     const onSelectRef = vi.fn();
 
     render(
-      <ReferenceImagePicker mode="line_work" selectedRef={null} onSelectRef={onSelectRef} />
+      <ReferenceImagePicker selectedRef={null} onSelectRef={onSelectRef} />
     );
 
     await waitFor(() => {
@@ -79,15 +73,159 @@ describe('ReferenceImagePicker', () => {
     expect(onSelectRef).toHaveBeenCalledWith('ref-001');
   });
 
-  it('shows "No reference images available" when list is empty', async () => {
+  it('shows only the Add Image card when reference list is empty', async () => {
     mockListReferences.mockResolvedValue([]);
 
     render(
-      <ReferenceImagePicker mode="line_work" selectedRef={null} onSelectRef={vi.fn()} />
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
     );
 
     await waitFor(() => {
-      expect(screen.getByText('No reference images available')).toBeInTheDocument();
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
     });
+    // The grid should only contain the add card, no reference cards
+    expect(screen.queryByText('IMG')).not.toBeInTheDocument();
+    expect(screen.getByText('Add Image')).toBeInTheDocument();
+  });
+
+  it('shows error message when ListReferences rejects with an Error', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockListReferences.mockRejectedValue(new Error('Database connection lost'));
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Database connection lost')).toBeInTheDocument();
+    expect(screen.queryByText('No reference images available')).not.toBeInTheDocument();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('shows fallback error message for non-Error rejections', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockListReferences.mockRejectedValue('something went wrong');
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Failed to load references')).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
+
+  it('renders an Add Image card', async () => {
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Add Image')).toBeInTheDocument();
+    expect(screen.getByText('+')).toBeInTheDocument();
+  });
+
+  it('uploads a reference image when file is selected', async () => {
+    const uploadedRef = {
+      id: 'ref-uploaded',
+      title: 'my-drawing',
+      filePath: 'references/uploads/my-drawing.png',
+      exerciseMode: 'line_work',
+      difficulty: 'beginner',
+    };
+
+    mockAddReference.mockResolvedValue(uploadedRef);
+
+    // After upload, the refreshed list includes the new image
+    let callCount = 0;
+    mockListReferences.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve([
+          {
+            id: 'ref-001',
+            title: 'Simple Face',
+            filePath: 'references/face.png',
+            exerciseMode: 'line_work',
+            difficulty: 'beginner',
+          },
+        ]);
+      }
+      // After upload, return list with the new image included
+      return Promise.resolve([
+        {
+          id: 'ref-001',
+          title: 'Simple Face',
+          filePath: 'references/face.png',
+          exerciseMode: 'line_work',
+          difficulty: 'beginner',
+        },
+        uploadedRef,
+      ]);
+    });
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Simple Face')).toBeInTheDocument();
+    });
+
+    // Create a mock file
+    const file = new File(['fake-image-data'], 'my-drawing.png', {
+      type: 'image/png',
+    });
+
+    // Simulate file selection
+    const fileInput = screen.getByTestId('reference-file-input') as HTMLInputElement;
+    await userEvent.upload(fileInput, file);
+
+    // Wait for AddReference to be called
+    await waitFor(() => {
+      expect(mockAddReference).toHaveBeenCalledWith(
+        'my-drawing',
+        'beginner',
+        expect.any(String)
+      );
+    });
+
+    // After upload, the list should be refreshed and show the new image
+    await waitFor(() => {
+      expect(screen.getByText('my-drawing')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error when upload fails', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockAddReference.mockRejectedValue(new Error('Upload failed: file too large'));
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    const file = new File(['fake-image-data'], 'big-image.png', {
+      type: 'image/png',
+    });
+
+    const fileInput = screen.getByTestId('reference-file-input') as HTMLInputElement;
+    await userEvent.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Upload failed: file too large')).toBeInTheDocument();
+    consoleSpy.mockRestore();
   });
 });

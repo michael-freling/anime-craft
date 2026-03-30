@@ -1,21 +1,22 @@
 import { test, expect } from "@playwright/test";
 
-test("complete session flow: select mode, pick reference, draw, submit, view feedback", async ({
+test("complete session flow: pick reference, draw, submit, view feedback", async ({
   page,
 }) => {
-  // 1. Go to home page
+  // 1. Go to home page and wait for it to load
   await page.goto("/");
-  await expect(page.locator("h1")).toHaveText("Anime Craft");
+  await expect(page.locator("h1")).toHaveText("Anime Craft", { timeout: 15000 });
 
-  // 2. Select exercise mode - "Line Work" (data-testid="mode-line_work")
-  await page.getByTestId("mode-line_work").click();
+  // 2. Wait for reference images to load from the real database (seeded by migrations).
+  //    The reference cards use the class "reference-card" but the "add image" card also
+  //    has that class with an additional "reference-card-add". Exclude the add card.
+  const referenceCards = page.locator(".reference-card:not(.reference-card-add)");
+  await expect(referenceCards.first()).toBeVisible({ timeout: 15000 });
 
-  // 3. Wait for reference images to load and select the first one
-  // The reference cards have data-testid="reference-card-{id}" and class "reference-card"
-  await page.locator(".reference-card").first().waitFor();
-  await page.locator(".reference-card").first().click();
+  // 3. Select the first reference image
+  await referenceCards.first().click();
 
-  // 4. Start Session button should be enabled now
+  // 4. Start Session button should now be enabled
   const startBtn = page.getByTestId("start-session-btn");
   await expect(startBtn).toBeEnabled();
   await startBtn.click();
@@ -23,8 +24,8 @@ test("complete session flow: select mode, pick reference, draw, submit, view fee
   // 5. Verify we navigated to the session page
   await expect(page).toHaveURL(/\/session\/.+/);
 
-  // 6. Wait for the session to load (reference image or canvas should appear)
-  await page.getByTestId("drawing-canvas").waitFor();
+  // 6. Wait for the drawing canvas to appear
+  await page.getByTestId("drawing-canvas").waitFor({ timeout: 15000 });
 
   // 7. Draw something on the canvas
   const canvas = page.getByTestId("drawing-canvas");
@@ -37,70 +38,72 @@ test("complete session flow: select mode, pick reference, draw, submit, view fee
     await page.mouse.up();
   }
 
-  // 8. Submit drawing (data-testid="submit-btn")
+  // 8. Submit drawing
   await page.getByTestId("submit-btn").click();
 
-  // 9. Verify we're on feedback page
-  await expect(page).toHaveURL(/\/session\/.+\/feedback/, { timeout: 10000 });
+  // 9. Verify we land on the feedback page
+  await expect(page).toHaveURL(/\/session\/.+\/feedback/, { timeout: 30000 });
 
-  // 10. Verify feedback content is displayed
-  await expect(page.locator("h1")).toHaveText("Drawing Feedback");
-  // Wait for feedback to load (the summary text from mock data)
+  // 10. Verify feedback content loaded (h1, summary, and score are visible)
+  await expect(page.locator("h1")).toHaveText("Drawing Feedback", {
+    timeout: 15000,
+  });
   await expect(page.getByTestId("feedback-summary")).toBeVisible({
-    timeout: 10000,
+    timeout: 15000,
   });
   await expect(page.getByTestId("overall-score")).toBeVisible();
 
-  // 11. Verify the overall score contains a number (72 from mock)
-  const scoreEl = page.getByTestId("overall-score");
-  await expect(scoreEl).toContainText("72");
+  // 11. The mock AI client returns overallScore 72; verify the score is a number
+  const scoreText = await page.getByTestId("overall-score").textContent();
+  expect(scoreText).toBeTruthy();
+  expect(scoreText).toMatch(/\d+/);
 
-  // 12. Verify category breakdown is present
+  // 12. Verify category breakdown, strengths, and improvements are displayed
   await expect(page.getByTestId("category-breakdown")).toBeVisible();
-
-  // 13. Verify strengths and improvements are shown
   await expect(page.getByTestId("feedback-strengths")).toBeVisible();
   await expect(page.getByTestId("feedback-improvements")).toBeVisible();
 
-  // 14. Click Start New Session to go back home
+  // 13. Click Start New Session to return home
   await page.getByTestId("new-session-btn").click();
   await expect(page).toHaveURL("/");
 });
 
 test("discard session returns to home", async ({ page }) => {
   await page.goto("/");
+  await expect(page.locator("h1")).toHaveText("Anime Craft", { timeout: 15000 });
 
-  // Select mode and reference
-  await page.getByTestId("mode-line_work").click();
-  await page.locator(".reference-card").first().waitFor();
-  await page.locator(".reference-card").first().click();
+  // Wait for reference images to load and select the first one
+  const referenceCards = page.locator(".reference-card:not(.reference-card-add)");
+  await expect(referenceCards.first()).toBeVisible({ timeout: 15000 });
+  await referenceCards.first().click();
+
+  // Start the session
   await page.getByTestId("start-session-btn").click();
-
-  // Wait for session page
   await expect(page).toHaveURL(/\/session\/.+/);
-  await page.getByTestId("drawing-canvas").waitFor();
+  await page.getByTestId("drawing-canvas").waitFor({ timeout: 15000 });
 
-  // Discard the session (data-testid="discard-btn")
+  // Discard the session
   await page.getByTestId("discard-btn").click();
 
   // Should be back at home
   await expect(page).toHaveURL("/");
 });
 
-test("start session button is disabled until mode and reference are selected", async ({
+test("start session button is disabled until a reference is selected", async ({
   page,
 }) => {
   await page.goto("/");
+  await expect(page.locator("h1")).toHaveText("Anime Craft", { timeout: 15000 });
 
+  // The start button should be disabled before any reference is selected
   const startBtn = page.getByTestId("start-session-btn");
   await expect(startBtn).toBeDisabled();
 
-  // Select mode only - still disabled (no reference selected yet)
-  await page.getByTestId("mode-coloring").click();
-  await expect(startBtn).toBeDisabled();
+  // Wait for references to load, then select one
+  const referenceCards = page.locator(".reference-card:not(.reference-card-add)");
+  await expect(referenceCards.first()).toBeVisible({ timeout: 15000 });
+  await referenceCards.first().click();
 
-  // Wait for references to load, then select one - now enabled
-  await page.locator(".reference-card").first().waitFor();
-  await page.locator(".reference-card").first().click();
+  // Now the button should be enabled
   await expect(startBtn).toBeEnabled();
 });

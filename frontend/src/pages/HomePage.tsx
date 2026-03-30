@@ -1,28 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ExerciseModeSelector from "../components/session/ExerciseModeSelector";
 import ReferenceImagePicker from "../components/session/ReferenceImagePicker";
 import { StartSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
 
+const EXERCISE_MODE = "line_work";
+
 function HomePage() {
   const navigate = useNavigate();
-  const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSelectMode = (mode: string) => {
-    setSelectedMode(mode);
-    setSelectedRef(null);
-    setError(null);
-  };
-
   const handleStart = async () => {
-    if (!selectedMode || !selectedRef) return;
+    if (!selectedRef) return;
     setIsStarting(true);
     setError(null);
     try {
-      const session = await StartSession(selectedMode, selectedRef);
+      const session = await StartSession(EXERCISE_MODE, selectedRef);
       navigate(`/session/${session.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start session");
@@ -33,12 +27,7 @@ function HomePage() {
   return (
     <div className="home-page" data-testid="home-page">
       <h1>Anime Craft</h1>
-      <ExerciseModeSelector
-        selectedMode={selectedMode}
-        onSelectMode={handleSelectMode}
-      />
       <ReferenceImagePicker
-        mode={selectedMode}
         selectedRef={selectedRef}
         onSelectRef={setSelectedRef}
       />
@@ -50,7 +39,7 @@ function HomePage() {
       <button
         className="start-session-btn"
         data-testid="start-session-btn"
-        disabled={!selectedMode || !selectedRef || isStarting}
+        disabled={!selectedRef || isStarting}
         onClick={handleStart}
       >
         {isStarting ? "Starting..." : "Start Session"}

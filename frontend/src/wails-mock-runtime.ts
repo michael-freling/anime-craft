@@ -24,24 +24,6 @@ const mockReferences = [
     tags: "eye",
     createdAt: "2026-01-01T00:00:00Z",
   },
-  {
-    id: "ref-004",
-    title: "Flat Color Face",
-    filePath: "references/coloring_face.png",
-    exerciseMode: "coloring",
-    difficulty: "beginner",
-    tags: "face,color",
-    createdAt: "2026-01-01T00:00:00Z",
-  },
-  {
-    id: "ref-006",
-    title: "Full Character",
-    filePath: "references/full_drawing_bust.png",
-    exerciseMode: "full_drawing",
-    difficulty: "beginner",
-    tags: "character",
-    createdAt: "2026-01-01T00:00:00Z",
-  },
 ];
 
 const sessions = new Map<string, any>();
@@ -162,6 +144,30 @@ const FUNCTION_IDS: Record<number, (...args: any[]) => any> = {
     };
     feedbacks.set(sessionID, fb);
     return fb;
+  },
+
+  // ReferenceService.AddReference(title, difficulty, imageDataBase64) — referenceservice.js
+  980217922: (title: string, difficulty: string, _imageDataBase64: string) => {
+    const newRef = {
+      id: `ref-upload-${Date.now()}`,
+      title,
+      filePath: `references/uploads/${title}.png`,
+      exerciseMode: "line_work",
+      difficulty,
+      tags: "",
+      createdAt: new Date().toISOString(),
+    };
+    mockReferences.push(newRef);
+    return newRef;
+  },
+
+  // ReferenceService.DeleteReference(id) — referenceservice.js
+  3519923638: (id: string) => {
+    const idx = mockReferences.findIndex((r) => r.id === id);
+    if (idx !== -1) {
+      mockReferences.splice(idx, 1);
+    }
+    return null;
   },
 
   // ReferenceService.ListReferences(mode) — referenceservice.js

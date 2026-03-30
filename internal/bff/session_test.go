@@ -20,14 +20,12 @@ func TestSessionService_StartSession_ValidModes(t *testing.T) {
 	db := testDB(t)
 	svc := NewSessionService(repository.NewSessionRepository(db))
 
-	for _, mode := range []string{"line_work", "coloring", "full_drawing"} {
-		session, err := svc.StartSession(mode, "ref-001")
-		require.NoError(t, err)
-		assert.NotEmpty(t, session.ID)
-		assert.Equal(t, mode, session.ExerciseMode)
-		assert.Equal(t, "in_progress", session.Status)
-		assert.Equal(t, "ref-001", session.ReferenceImageID)
-	}
+	session, err := svc.StartSession("line_work", "ref-001")
+	require.NoError(t, err)
+	assert.NotEmpty(t, session.ID)
+	assert.Equal(t, "line_work", session.ExerciseMode)
+	assert.Equal(t, "in_progress", session.Status)
+	assert.Equal(t, "ref-001", session.ReferenceImageID)
 }
 
 func TestSessionService_StartSession_InvalidMode(t *testing.T) {
@@ -57,7 +55,7 @@ func TestSessionService_EndSession_AlreadyCompleted(t *testing.T) {
 	db := testDB(t)
 	svc := NewSessionService(repository.NewSessionRepository(db))
 
-	session, err := svc.StartSession("coloring", "ref-001")
+	session, err := svc.StartSession("line_work", "ref-001")
 	require.NoError(t, err)
 
 	_, err = svc.EndSession(session.ID)

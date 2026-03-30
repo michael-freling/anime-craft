@@ -1,4 +1,5 @@
 bin/
+anime-craft
 node_modules/
 dist/
 *.exe

@@ -4,14 +4,10 @@ INSERT OR IGNORE INTO achievements (id, name, title, description, icon, criteria
 ('ach-003', 'dedicated_artist', 'Dedicated Artist', 'Complete 25 practice sessions', 'palette', 'session_count', 25),
 ('ach-004', 'perfectionist', 'Perfectionist', 'Score 90 or above on a session', 'trophy', 'score_threshold', 90),
 ('ach-005', 'line_master', 'Line Master', 'Complete 10 line work sessions', 'brush', 'mode_session_count', 10),
-('ach-006', 'color_wizard', 'Color Wizard', 'Complete 10 coloring sessions', 'rainbow', 'mode_session_count', 10),
 ('ach-007', 'on_a_roll', 'On a Roll', 'Practice 3 days in a row', 'fire', 'streak', 3),
 ('ach-008', 'week_warrior', 'Week Warrior', 'Practice 7 days in a row', 'calendar', 'streak', 7),
 ('ach-009', 'improving', 'Improving', 'Improve your average score by 10 points', 'chart', 'score_improvement', 10);
 
 INSERT OR IGNORE INTO reference_images (id, title, file_path, exercise_mode, difficulty, tags) VALUES
 ('ref-001', 'Simple Face - Lines', 'references/line_work/simple-face.png', 'line_work', 'beginner', 'face,portrait'),
-('ref-002', 'Chibi Character - Lines', 'references/line_work/chibi-character.png', 'line_work', 'beginner', 'character,chibi'),
-('ref-003', 'Eye Study - Colors', 'references/coloring/eye-study.png', 'coloring', 'beginner', 'eye,detail'),
-('ref-004', 'Hair Shading - Colors', 'references/coloring/hair-shading.png', 'coloring', 'beginner', 'hair,shading'),
-('ref-005', 'Full Character', 'references/full_drawing/full-character.png', 'full_drawing', 'beginner', 'character,full');
+('ref-002', 'Chibi Character - Lines', 'references/line_work/chibi-character.png', 'line_work', 'beginner', 'character,chibi');
