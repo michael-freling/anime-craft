@@ -21,6 +21,9 @@ jobs:
         with:
           go-version: ${{ steps.go-version.outputs.version }}
 
+      - name: Install Wails system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
       - name: Create frontend dist placeholder
         run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 
