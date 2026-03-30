@@ -88,6 +88,7 @@ jobs:
   e2e:
     name: E2E Test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -128,3 +129,4 @@ jobs:
       - name: Run E2E tests
         working-directory: e2e
         run: xvfb-run npx playwright test
+        timeout-minutes: 5
