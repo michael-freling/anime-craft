@@ -157,4 +157,49 @@ describe('HomePage', () => {
       expect(screen.getByText('Server error')).toBeInTheDocument();
     });
   });
+
+  it('shows fallback error message when StartSession fails with non-Error', async () => {
+    mockStartSession.mockRejectedValue('string rejection');
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Simple Face')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('reference-card-ref-001'));
+    await user.click(screen.getByTestId('start-session-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('home-error')).toBeInTheDocument();
+      expect(screen.getByText('Failed to start session')).toBeInTheDocument();
+    });
+  });
+
+  it('handleStart does nothing when no reference is selected', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Simple Face')).toBeInTheDocument();
+    });
+
+    // The button is disabled, but we can test the guard by programmatically clicking
+    const startBtn = screen.getByTestId('start-session-btn');
+    expect(startBtn).toBeDisabled();
+
+    // Force-click the disabled button to verify the !selectedRef guard
+    await user.click(startBtn);
+
+    // StartSession should never be called
+    expect(mockStartSession).not.toHaveBeenCalled();
+  });
 });

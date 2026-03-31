@@ -172,4 +172,28 @@ describe('ReferenceImageViewer', () => {
     const img = screen.getByTestId('reference-image');
     expect(img).toHaveClass('session-reference-img');
   });
+
+  it('does not set error state when unmounted before catch executes', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    let rejectRef!: (reason: any) => void;
+    mockGetReference.mockReturnValue(new Promise((_, reject) => { rejectRef = reject; }));
+    mockGetReferenceImageData.mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = render(<ReferenceImageViewer referenceId="ref-001" />);
+
+    expect(screen.getByTestId('reference-loading')).toBeInTheDocument();
+
+    // Unmount before the rejection
+    unmount();
+
+    // Reject after unmount — the cancelled guard in catch should prevent setError
+    rejectRef(new Error('Late error'));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // No errors should appear since the component is unmounted and cancelled = true
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
 });

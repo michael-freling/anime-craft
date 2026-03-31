@@ -105,3 +105,91 @@ func TestSessionRepository_List(t *testing.T) {
 	assert.Len(t, sessions, 1)
 	assert.Equal(t, "sess-a", sessions[0].ID)
 }
+
+func TestSessionRepository_Create_DuplicateID(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+
+	session := model.Session{
+		ID:               "sess-dup",
+		ReferenceImageID: "ref-001",
+		ExerciseMode:     "line_work",
+		Status:           "in_progress",
+		StartedAt:        time.Now().Truncate(time.Second),
+	}
+
+	err := repo.Create(session)
+	require.NoError(t, err)
+
+	// Creating the same ID again should fail
+	err = repo.Create(session)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "insert session")
+}
+
+func TestSessionRepository_Create_InvalidFK(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+
+	session := model.Session{
+		ID:               "sess-bad-fk",
+		ReferenceImageID: "nonexistent-ref",
+		ExerciseMode:     "line_work",
+		Status:           "in_progress",
+		StartedAt:        time.Now().Truncate(time.Second),
+	}
+
+	err := repo.Create(session)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "insert session")
+}
+
+func TestSessionRepository_Update_DBClosed(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+
+	// Create a session first
+	session := model.Session{
+		ID:               "sess-update-close",
+		ReferenceImageID: "ref-001",
+		ExerciseMode:     "line_work",
+		Status:           "in_progress",
+		StartedAt:        time.Now().Truncate(time.Second),
+	}
+	require.NoError(t, repo.Create(session))
+
+	// Close the DB
+	require.NoError(t, db.Close())
+
+	now := time.Now().Truncate(time.Second)
+	duration := 60
+	session.Status = "completed"
+	session.EndedAt = &now
+	session.DurationSeconds = &duration
+
+	err := repo.Update(session)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "update session")
+}
+
+func TestSessionRepository_List_DBClosed(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.List(10, 0)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "list sessions")
+}
+
+func TestSessionRepository_Get_DBClosed(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.Get("any-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get session")
+}

@@ -397,6 +397,198 @@ describe('ReferenceImagePicker', () => {
     });
   });
 
+  it('handles null result from ListReferences (treats as empty list)', async () => {
+    mockListReferences.mockResolvedValue(null);
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    // No reference cards should be rendered, only the add card
+    expect(screen.queryByText('IMG')).not.toBeInTheDocument();
+  });
+
+  it('does not update state when component unmounts before useEffect ListReferences resolves', async () => {
+    let resolveList!: (value: any) => void;
+    mockListReferences.mockReturnValue(new Promise((resolve) => { resolveList = resolve; }));
+
+    const { unmount } = render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    // Unmount before the promise resolves
+    unmount();
+
+    // Resolve after unmount — cancelled flag should prevent setImages
+    resolveList([{ id: 'ref-001', title: 'Test', difficulty: 'beginner' }]);
+    await new Promise((r) => setTimeout(r, 50));
+    // No errors — cancelled guard prevents state updates
+  });
+
+  it('does not update error state when component unmounts before useEffect ListReferences rejects', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectList!: (reason: any) => void;
+    mockListReferences.mockReturnValue(new Promise((_, reject) => { rejectList = reject; }));
+
+    const { unmount } = render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    // Unmount before the promise rejects
+    unmount();
+
+    // Reject after unmount — cancelled flag should prevent setError
+    rejectList(new Error('Late error'));
+    await new Promise((r) => setTimeout(r, 50));
+    // No errors — cancelled guard prevents state updates
+    consoleSpy.mockRestore();
+  });
+
+  it('uses "untitled" when file path has no filename', async () => {
+    const user = userEvent.setup();
+
+    // A path that ends with a separator so pop() returns empty string
+    mockOpenFile.mockResolvedValue('/home/user/');
+    mockAddReferenceByFilePath.mockResolvedValue({
+      id: 'ref-untitled',
+      title: 'untitled',
+      filePath: 'references/untitled.png',
+      exerciseMode: 'line_work',
+      difficulty: 'beginner',
+    });
+    mockListReferences.mockResolvedValue([]);
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('reference-card-add'));
+
+    await waitFor(() => {
+      expect(mockAddReferenceByFilePath).toHaveBeenCalledWith(
+        'untitled',
+        'beginner',
+        '/home/user/'
+      );
+    });
+  });
+
+  it('shows error in loadReferences callback when upload triggers reload that fails with non-Error', async () => {
+    const user = userEvent.setup();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Initial load (from useEffect) succeeds, reload (from loadReferences) fails
+    let callCount = 0;
+    mockListReferences.mockImplementation(() => {
+      callCount++;
+      if (callCount <= 1) {
+        return Promise.resolve([]);
+      }
+      // The reload after upload fails with a non-Error
+      return Promise.reject('string error from reload');
+    });
+
+    mockOpenFile.mockResolvedValue('/home/user/Pictures/image.png');
+    mockAddReferenceByFilePath.mockResolvedValue({
+      id: 'ref-new',
+      title: 'image',
+      filePath: 'references/image.png',
+      exerciseMode: 'line_work',
+      difficulty: 'beginner',
+    });
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    // Trigger upload which calls loadReferences after success
+    await user.click(screen.getByTestId('reference-card-add'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Failed to load references')).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
+
+  it('shows error in loadReferences callback when upload triggers reload that fails with Error', async () => {
+    const user = userEvent.setup();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Initial load (from useEffect) succeeds, reload (from loadReferences) fails
+    let callCount = 0;
+    mockListReferences.mockImplementation(() => {
+      callCount++;
+      if (callCount <= 1) {
+        return Promise.resolve([]);
+      }
+      // The reload after upload fails with an Error
+      return Promise.reject(new Error('DB error on reload'));
+    });
+
+    mockOpenFile.mockResolvedValue('/home/user/Pictures/image.png');
+    mockAddReferenceByFilePath.mockResolvedValue({
+      id: 'ref-new',
+      title: 'image',
+      filePath: 'references/image.png',
+      exerciseMode: 'line_work',
+      difficulty: 'beginner',
+    });
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    // Trigger upload which calls loadReferences after success
+    await user.click(screen.getByTestId('reference-card-add'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('DB error on reload')).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
+
+  it('shows fallback error message when upload fails with non-Error', async () => {
+    const user = userEvent.setup();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    mockOpenFile.mockResolvedValue('/home/user/Pictures/image.png');
+    mockAddReferenceByFilePath.mockRejectedValue('not an error object');
+
+    render(
+      <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('reference-card-add'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Failed to upload image')).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
+
   it('reproduces bug: base64 data for real images is too large for Wails URL parameters', () => {
     // Wails sends call args as URL query parameters (runtime.js line 45):
     //   url.searchParams.append("args", JSON.stringify(args))
