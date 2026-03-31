@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/michael-freling/anime-craft/internal/model"
 	"github.com/michael-freling/anime-craft/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,4 +294,121 @@ func TestReferenceService_DeleteReference_FileAlreadyGone(t *testing.T) {
 	// Verify DB record is gone
 	_, err = svc.GetReference(ref.ID)
 	require.Error(t, err)
+}
+
+func TestReferenceService_ListReferences(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// The DB has 2 seeded line_work references from migrations.
+	// Add more references with mode "line_work" via AddReference (which hardcodes line_work).
+	imageBytes := []byte("fake-png-data")
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	_, err := svc.AddReference("Alpha", "beginner", imageBase64)
+	require.NoError(t, err)
+	_, err = svc.AddReference("Bravo", "intermediate", imageBase64)
+	require.NoError(t, err)
+	_, err = svc.AddReference("Charlie", "advanced", imageBase64)
+	require.NoError(t, err)
+
+	refs, err := svc.ListReferences("line_work")
+	require.NoError(t, err)
+	// 2 seeded + 3 added = 5 total
+	require.Len(t, refs, 5)
+
+	for _, ref := range refs {
+		assert.Equal(t, "line_work", ref.ExerciseMode)
+	}
+
+	// Results are ordered by title; verify added ones are present
+	titles := make([]string, len(refs))
+	for i, ref := range refs {
+		titles[i] = ref.Title
+	}
+	assert.Contains(t, titles, "Alpha")
+	assert.Contains(t, titles, "Bravo")
+	assert.Contains(t, titles, "Charlie")
+}
+
+func TestReferenceService_ListReferences_EmptyList(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewReferenceService(repository.NewReferenceRepository(db), dataDir)
+
+	// Use a mode that has no seeded data so we get an empty result
+	refs, err := svc.ListReferences("color_study")
+	require.NoError(t, err)
+	assert.Empty(t, refs)
+}
+
+func TestReferenceService_ListReferences_FiltersByMode(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	repo := repository.NewReferenceRepository(db)
+	svc := NewReferenceService(repo, dataDir)
+
+	// Insert references with different modes directly via the repository
+	// since AddReference hardcodes mode to "line_work"
+	now := time.Now()
+	require.NoError(t, repo.Create(model.ReferenceImage{
+		ID:           "id-line-1",
+		Title:        "Line Work 1",
+		FilePath:     "references/line1.png",
+		ExerciseMode: "line_work",
+		Difficulty:   "beginner",
+		CreatedAt:    now,
+	}))
+	require.NoError(t, repo.Create(model.ReferenceImage{
+		ID:           "id-line-2",
+		Title:        "Line Work 2",
+		FilePath:     "references/line2.png",
+		ExerciseMode: "line_work",
+		Difficulty:   "intermediate",
+		CreatedAt:    now,
+	}))
+	require.NoError(t, repo.Create(model.ReferenceImage{
+		ID:           "id-color-1",
+		Title:        "Color Study 1",
+		FilePath:     "references/color1.png",
+		ExerciseMode: "color_study",
+		Difficulty:   "beginner",
+		CreatedAt:    now,
+	}))
+	require.NoError(t, repo.Create(model.ReferenceImage{
+		ID:           "id-gesture-1",
+		Title:        "Gesture 1",
+		FilePath:     "references/gesture1.png",
+		ExerciseMode: "gesture",
+		Difficulty:   "advanced",
+		CreatedAt:    now,
+	}))
+
+	// Filter for line_work: should return 2 seeded + 2 inserted = 4 line_work references
+	lineRefs, err := svc.ListReferences("line_work")
+	require.NoError(t, err)
+	require.Len(t, lineRefs, 4)
+	for _, ref := range lineRefs {
+		assert.Equal(t, "line_work", ref.ExerciseMode)
+	}
+
+	// Filter for color_study: should return only the 1 color_study reference
+	colorRefs, err := svc.ListReferences("color_study")
+	require.NoError(t, err)
+	require.Len(t, colorRefs, 1)
+	assert.Equal(t, "id-color-1", colorRefs[0].ID)
+	assert.Equal(t, "color_study", colorRefs[0].ExerciseMode)
+
+	// Filter for gesture: should return only the 1 gesture reference
+	gestureRefs, err := svc.ListReferences("gesture")
+	require.NoError(t, err)
+	require.Len(t, gestureRefs, 1)
+	assert.Equal(t, "id-gesture-1", gestureRefs[0].ID)
+	assert.Equal(t, "gesture", gestureRefs[0].ExerciseMode)
+
+	// Filter for nonexistent mode: should return empty
+	noneRefs, err := svc.ListReferences("nonexistent_mode")
+	require.NoError(t, err)
+	assert.Empty(t, noneRefs)
 }
