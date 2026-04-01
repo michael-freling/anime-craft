@@ -1,0 +1,44 @@
+name: E2E
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read Go version
+        id: go-version
+        run: echo "version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            at-spi2-core dbus-x11 xvfb \
+            python3-gi python3-pip
+          pip3 install --break-system-packages dogtail pytest
+      - name: Create frontend dist
+        run: |
+          cd frontend && npm install && npm run build
+      - name: Build app with coverage
+        run: go build -cover -o anime-craft .
+      - name: Run E2E tests
+        run: |
+          mkdir -p /tmp/gocoverdir
+          dbus-run-session -- xvfb-run -a \
+            env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge \
+            python3 -m pytest e2e/ -v --tb=short
+      - name: Collect Go coverage
+        if: always()
+        run: |
+          if [ -d /tmp/gocoverdir ] && [ "$(ls -A /tmp/gocoverdir)" ]; then
+            go tool covdata textfmt -i=/tmp/gocoverdir -o=e2e-coverage.out
+            go tool cover -func=e2e-coverage.out | tail -1
+          fi
