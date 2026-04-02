@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,9 +72,9 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 		return model.Feedback{}, fmt.Errorf("read drawing file: %w", err)
 	}
 
-	refData, err := os.ReadFile(refImage.FilePath)
+	refData, err := os.ReadFile(filepath.Join(s.dataDir, refImage.FilePath))
 	if err != nil {
-		slog.Error("failed to read reference image file", "method", "RequestFeedback", "sessionID", sessionID, "filePath", refImage.FilePath, "error", err)
+		slog.Error("failed to read reference image file", "method", "RequestFeedback", "sessionID", sessionID, "filePath", filepath.Join(s.dataDir, refImage.FilePath), "error", err)
 		return model.Feedback{}, fmt.Errorf("read reference image file: %w", err)
 	}
 

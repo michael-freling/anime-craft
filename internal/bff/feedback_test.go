@@ -36,9 +36,9 @@ func TestFeedbackService_RequestFeedback(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001 to point to it
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -95,9 +95,9 @@ func TestFeedbackService_RequestFeedback_ReturnsCached(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001 to point to it
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -144,9 +144,9 @@ func TestFeedbackService_GetFeedback(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001 to point to it
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -304,9 +304,9 @@ func TestFeedbackService_RequestFeedback_DrawingFileMissing(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -345,7 +345,7 @@ func TestFeedbackService_RequestFeedback_RefFileMissing(t *testing.T) {
 
 	// Update seeded ref-001 to point to a non-existent file
 	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?",
-		filepath.Join(dataDir, "nonexistent-ref.png"), "ref-001")
+		"references/nonexistent-ref.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -386,9 +386,9 @@ func TestFeedbackService_RequestFeedback_AIClientError(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -429,9 +429,9 @@ func TestFeedbackService_RequestFeedback_StoreFailure(t *testing.T) {
 	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
 
 	// Create reference image file and update seeded ref-001
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
