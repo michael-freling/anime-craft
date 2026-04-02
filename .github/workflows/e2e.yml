@@ -44,25 +44,8 @@ jobs:
           dbus-run-session -- xvfb-run -a \
             env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge \
             python3 -m pytest e2e/ -v --tb=short
-      - name: Install Playwright
-        working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Run Playwright flow tests
-        run: |
-          # Start virtual display for the native Wails window
-          Xvfb :99 -screen 0 1280x1024x24 &
-          sleep 1
-          export DISPLAY=:99
-          cd e2e && npx playwright test --reporter=list 2>&1
-        timeout-minutes: 5
-      - name: Upload Playwright results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results
-          path: e2e/test-results/
+      - name: Run integration flow tests
+        run: go test ./internal/bff/ -run "TestFullSessionFlow|TestConcurrentSessionFlow" -v -count=1
       - name: Collect Go coverage
         if: always()
         run: |
