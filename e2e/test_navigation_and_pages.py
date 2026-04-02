@@ -4,20 +4,18 @@ These tests verify that sidebar navigation links work and that
 each page renders the expected heading content.
 """
 
-from helpers import click_element, find_by_role_and_name
+from helpers import click_element, find_by_role_and_name, find_clickable_by_name
 
 
 def _navigate_to(app, nav_name, timeout=10):
     """Click a sidebar navigation link by its name.
 
-    Navigation items are rendered as <li> elements containing <a> links.
-    In the AT-SPI tree they appear as "list item" nodes whose child "link"
-    node carries the accessible name.  We try clicking the link first; if
-    that is not actionable we fall back to the list item itself.
+    WebKit2GTK may expose <a> elements under different AT-SPI roles
+    (link, list item, etc.), so we search by name across all roles and
+    pick the first one that is actionable.
     """
-    # First try to find and click the link element directly.
-    link = find_by_role_and_name(app, "link", nav_name, timeout=timeout)
-    click_element(link)
+    element = find_clickable_by_name(app, nav_name, timeout=timeout)
+    click_element(element)
 
 
 def test_navigate_to_progress_page(app):

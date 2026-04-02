@@ -29,6 +29,26 @@ def find_all_by_role_and_name(node, role_name, name=None, results=None):
     return results
 
 
+def find_all_by_name(node, name, results=None):
+    """Recursively find all accessible elements matching a name (any role)."""
+    if results is None:
+        results = []
+    try:
+        node_name = node.get_name()
+    except Exception:
+        return results
+
+    if node_name == name:
+        results.append(node)
+
+    for i in range(node.get_child_count()):
+        child = node.get_child_at_index(i)
+        if child:
+            find_all_by_name(child, name, results)
+
+    return results
+
+
 def find_by_role_and_name(node, role_name, name=None, timeout=10):
     """Find a single element by role and name, retrying until timeout."""
     deadline = time.monotonic() + timeout
@@ -41,6 +61,23 @@ def find_by_role_and_name(node, role_name, name=None, timeout=10):
     if name is not None:
         role_desc += f", name='{name}'"
     raise AssertionError(f"Element not found: {role_desc}")
+
+
+def find_clickable_by_name(node, name, timeout=10):
+    """Find a clickable element by name, trying multiple roles.
+
+    WebKit2GTK may expose navigation links as 'link', 'list item',
+    'push button', or other roles depending on the element type.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        candidates = find_all_by_name(node, name)
+        for c in candidates:
+            action = c.get_action_iface()
+            if action and action.get_n_actions() > 0:
+                return c
+        time.sleep(0.5)
+    raise AssertionError(f"Clickable element not found: name='{name}'")
 
 
 def click_element(element):
