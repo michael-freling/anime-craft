@@ -165,6 +165,65 @@ func TestFullSessionFlow(t *testing.T) {
 	}
 }
 
+// TestDuplicateRequestFeedback reproduces the race condition where the frontend
+// calls RequestFeedback twice for the same session (React useEffect double-fire).
+// The second call must not fail with UNIQUE constraint violation.
+func TestDuplicateRequestFeedback(t *testing.T) {
+	refService, sessionService, drawingService, feedbackService := setupIntegrationServices(t)
+
+	base64PNG := newTestBase64PNG()
+
+	ref, err := refService.AddReference("Test Ref", "beginner", base64PNG)
+	if err != nil {
+		t.Fatalf("AddReference: %v", err)
+	}
+
+	session, err := sessionService.StartSession("line_work", ref.ID)
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	_, err = drawingService.SaveDrawing(session.ID, base64PNG)
+	if err != nil {
+		t.Fatalf("SaveDrawing: %v", err)
+	}
+
+	_, err = sessionService.EndSession(session.ID)
+	if err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	// Simulate React double-fire: two concurrent RequestFeedback for the same session
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fb, err := feedbackService.RequestFeedback(session.ID)
+			if err != nil {
+				results <- fmt.Errorf("RequestFeedback: %w", err)
+				return
+			}
+			if fb.ID == "" {
+				results <- fmt.Errorf("feedback has empty ID")
+				return
+			}
+			results <- nil
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	for err := range results {
+		if err != nil {
+			t.Fatalf("duplicate RequestFeedback failed: %v", err)
+		}
+	}
+}
+
 // TestConcurrentSessionFlow runs multiple full session flows concurrently to
 // verify that the busy_timeout and connection pooling settings prevent
 // SQLITE_BUSY errors under concurrent access.

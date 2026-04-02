@@ -113,6 +113,12 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	}
 
 	if err := s.repo.Create(feedback); err != nil {
+		// Handle race condition: another concurrent call may have inserted feedback
+		// for this session between our existence check and this insert.
+		existing, getErr := s.repo.GetBySessionID(sessionID)
+		if getErr == nil {
+			return existing, nil
+		}
 		slog.Error("failed to store feedback", "method", "RequestFeedback", "sessionID", sessionID, "error", err)
 		return model.Feedback{}, fmt.Errorf("store feedback: %w", err)
 	}
