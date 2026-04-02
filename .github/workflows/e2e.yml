@@ -43,42 +43,7 @@ jobs:
           mkdir -p /tmp/gocoverdir
           dbus-run-session -- xvfb-run -a \
             env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge \
-            python3 -m pytest e2e/ -v --tb=long -s 2>&1
-      - name: Dump AT-SPI tree on failure
-        if: failure()
-        run: |
-          cat > /tmp/dump_tree.py << 'PYEOF'
-          import gi
-          gi.require_version("Atspi", "2.0")
-          from gi.repository import Atspi
-          import time, sys
-          def dump(node, indent=0):
-              try:
-                  role = node.get_role_name()
-                  name = node.get_name()
-                  action = node.get_action_iface()
-                  n_actions = action.get_n_actions() if action else 0
-                  print(f"{'  '*indent}{role}: '{name}' (actions={n_actions})")
-              except Exception as e:
-                  print(f"{'  '*indent}[error: {e}]")
-                  return
-              if indent > 8:
-                  return
-              for i in range(node.get_child_count()):
-                  child = node.get_child_at_index(i)
-                  if child:
-                      dump(child, indent + 1)
-          desktop = Atspi.get_desktop(0)
-          for i in range(desktop.get_child_count()):
-              child = desktop.get_child_at_index(i)
-              if child and child.get_name() == "anime-craft":
-                  dump(child)
-                  sys.exit(0)
-          print("App not found in AT-SPI tree")
-          PYEOF
-          dbus-run-session -- xvfb-run -a \
-            env GTK_MODULES=gail:atk-bridge \
-            timeout 30 python3 /tmp/dump_tree.py 2>/dev/null || echo "Tree dump failed (app may have exited)"
+            python3 -m pytest e2e/ -v --tb=short
       - name: Collect Go coverage
         if: always()
         run: |
