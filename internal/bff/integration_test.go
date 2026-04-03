@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -162,6 +163,40 @@ func TestFullSessionFlow(t *testing.T) {
 	}
 	if fb3.ID != feedback.ID {
 		t.Fatalf("expected cached feedback ID %q, got %q", feedback.ID, fb3.ID)
+	}
+
+	// Step 8: Verify GetReferenceImageData returns a valid base64 data URI
+	refImageData, err := refService.GetReferenceImageData(ref.ID)
+	if err != nil {
+		t.Fatalf("GetReferenceImageData: %v", err)
+	}
+	if !strings.HasPrefix(refImageData, "data:image/png;base64,") {
+		t.Fatalf("expected reference image data to start with data:image/png;base64, got prefix %q", refImageData[:min(40, len(refImageData))])
+	}
+	refEncoded := refImageData[len("data:image/png;base64,"):]
+	refDecoded, err := base64.StdEncoding.DecodeString(refEncoded)
+	if err != nil {
+		t.Fatalf("failed to decode reference image base64: %v", err)
+	}
+	if len(refDecoded) == 0 {
+		t.Fatal("expected non-empty decoded reference image data")
+	}
+
+	// Step 9: Verify GetDrawingImageData returns a valid base64 data URI
+	drawingImageData, err := drawingService.GetDrawingImageData(session.ID)
+	if err != nil {
+		t.Fatalf("GetDrawingImageData: %v", err)
+	}
+	if !strings.HasPrefix(drawingImageData, "data:image/png;base64,") {
+		t.Fatalf("expected drawing image data to start with data:image/png;base64, got prefix %q", drawingImageData[:min(40, len(drawingImageData))])
+	}
+	drawingEncoded := drawingImageData[len("data:image/png;base64,"):]
+	drawingDecoded, err := base64.StdEncoding.DecodeString(drawingEncoded)
+	if err != nil {
+		t.Fatalf("failed to decode drawing image base64: %v", err)
+	}
+	if len(drawingDecoded) == 0 {
+		t.Fatal("expected non-empty decoded drawing image data")
 	}
 }
 

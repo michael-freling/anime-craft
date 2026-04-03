@@ -9,8 +9,8 @@ import {
   GetFeedback,
 } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/feedbackservice.js";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
-import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
+import { GetReferenceImageData } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { GetDrawingImageData } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
 
 interface FeedbackData {
   overallScore: number;
@@ -64,14 +64,14 @@ function FeedbackPage() {
         const session = await GetSession(id!);
         if (cancelled) return;
 
-        const [ref, drawing] = await Promise.all([
-          GetReference(session.referenceImageId),
-          GetDrawing(id!),
+        const [refImageData, drawingImageData] = await Promise.all([
+          GetReferenceImageData(session.referenceImageId),
+          GetDrawingImageData(id!),
         ]);
 
         if (cancelled) return;
-        setReferenceImageUrl(ref.filePath);
-        setDrawingImageUrl(drawing.filePath);
+        setReferenceImageUrl(refImageData);
+        setDrawingImageUrl(drawingImageData);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load feedback");

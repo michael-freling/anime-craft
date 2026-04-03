@@ -195,3 +195,61 @@ func TestDrawingService_SaveDrawing_RepoCreateFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create drawing record")
 }
+
+func TestDrawingService_GetDrawingImageData(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewDrawingService(repository.NewDrawingRepository(db), dataDir)
+
+	createTestSession(t, db, "sess-img-data")
+
+	imageBytes := []byte("fake-png-data-for-image-data-test")
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	_, err := svc.SaveDrawing("sess-img-data", imageBase64)
+	require.NoError(t, err)
+
+	// Get the image data as base64 data URI
+	result, err := svc.GetDrawingImageData("sess-img-data")
+	require.NoError(t, err)
+	assert.True(t, len(result) > 0)
+	assert.Contains(t, result, "data:image/png;base64,")
+
+	// Verify the base64 content decodes to the original file content
+	prefix := "data:image/png;base64,"
+	encoded := result[len(prefix):]
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, imageBytes, decoded)
+}
+
+func TestDrawingService_GetDrawingImageData_NotFound(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewDrawingService(repository.NewDrawingRepository(db), dataDir)
+
+	_, err := svc.GetDrawingImageData("nonexistent-session")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get drawing")
+}
+
+func TestDrawingService_GetDrawingImageData_FileDeleted(t *testing.T) {
+	db := testDB(t)
+	dataDir := t.TempDir()
+	svc := NewDrawingService(repository.NewDrawingRepository(db), dataDir)
+
+	createTestSession(t, db, "sess-file-deleted")
+
+	imageBytes := []byte("data-that-will-be-deleted")
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	drawing, err := svc.SaveDrawing("sess-file-deleted", imageBase64)
+	require.NoError(t, err)
+
+	// Delete the file to simulate a missing file scenario
+	require.NoError(t, os.Remove(drawing.FilePath))
+
+	_, err = svc.GetDrawingImageData("sess-file-deleted")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read drawing file")
+}
