@@ -13,3 +13,4 @@ frontend/coverage.out
 frontend/coverage/
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+onnxruntime/

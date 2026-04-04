@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/michael-freling/anime-craft/internal/ai"
 	"github.com/michael-freling/anime-craft/internal/repository"
 )
 
@@ -51,12 +50,10 @@ func setupIntegrationServices(t *testing.T) (
 	drawingRepo := repository.NewDrawingRepository(db)
 	feedbackRepo := repository.NewFeedbackRepository(db)
 
-	aiClient := ai.NewMockFeedbackClient()
-
 	refService := NewReferenceService(refRepo, dataDir)
 	sessionService := NewSessionService(sessionRepo)
 	drawingService := NewDrawingService(drawingRepo, dataDir)
-	feedbackService := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)
+	feedbackService := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, nil)
 
 	return refService, sessionService, drawingService, feedbackService
 }
@@ -131,18 +128,6 @@ func TestFullSessionFlow(t *testing.T) {
 	if feedback.SessionID != session.ID {
 		t.Fatalf("expected feedback session ID %q, got %q", session.ID, feedback.SessionID)
 	}
-	if feedback.OverallScore <= 0 {
-		t.Fatalf("expected positive overall score, got %d", feedback.OverallScore)
-	}
-	if feedback.Summary == "" {
-		t.Fatal("expected non-empty feedback summary")
-	}
-	if len(feedback.Strengths) == 0 {
-		t.Fatal("expected at least one strength in feedback")
-	}
-	if len(feedback.Improvements) == 0 {
-		t.Fatal("expected at least one improvement in feedback")
-	}
 
 	// Step 6: Get feedback again (verifies read-back / caching path)
 	fb2, err := feedbackService.GetFeedback(session.ID)
@@ -151,9 +136,6 @@ func TestFullSessionFlow(t *testing.T) {
 	}
 	if fb2.ID != feedback.ID {
 		t.Fatalf("expected feedback ID %q on re-read, got %q", feedback.ID, fb2.ID)
-	}
-	if fb2.OverallScore != feedback.OverallScore {
-		t.Fatalf("expected overall score %d on re-read, got %d", feedback.OverallScore, fb2.OverallScore)
 	}
 
 	// Step 7: Request feedback again should return the cached feedback
@@ -313,10 +295,6 @@ func TestConcurrentSessionFlow(t *testing.T) {
 
 			if feedback.ID == "" {
 				errs <- fmt.Errorf("worker %d: feedback has empty ID", workerID)
-				return
-			}
-			if feedback.OverallScore <= 0 {
-				errs <- fmt.Errorf("worker %d: expected positive score, got %d", workerID, feedback.OverallScore)
 				return
 			}
 		}(i)

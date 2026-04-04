@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/adrg/xdg"
-	"github.com/michael-freling/anime-craft/internal/ai"
 	"github.com/michael-freling/anime-craft/internal/bff"
 	"github.com/michael-freling/anime-craft/internal/repository"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -36,7 +35,7 @@ func main() {
 	drawingRepo := repository.NewDrawingRepository(db)
 	feedbackRepo := repository.NewFeedbackRepository(db)
 
-	aiClient := ai.NewMockFeedbackClient()
+	lineArtExtractor := initLineArtExtractor()
 
 	app := application.New(application.Options{
 		Name:        "anime-craft",
@@ -44,7 +43,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(bff.NewSessionService(sessionRepo)),
 			application.NewService(bff.NewDrawingService(drawingRepo, dataDir)),
-			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)),
+			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, lineArtExtractor)),
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),
