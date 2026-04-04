@@ -90,9 +90,9 @@ func initLineArtExtractor() bff.LineArtExtractor {
 		libDir := filepath.Dir(libraryPath)
 		path := os.Getenv("PATH")
 		if path != "" {
-			os.Setenv("PATH", libDir+";"+path)
+			_ = os.Setenv("PATH", libDir+";"+path)
 		} else {
-			os.Setenv("PATH", libDir)
+			_ = os.Setenv("PATH", libDir)
 		}
 		log.Printf("Line art: added %s to PATH for DLL resolution", libDir)
 	}

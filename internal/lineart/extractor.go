@@ -67,7 +67,7 @@ func (e *Extractor) Extract(pngData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create input tensor: %w", err)
 	}
-	defer inputTensor.Destroy()
+	defer func() { _ = inputTensor.Destroy() }()
 
 	// Create output tensor (model outputs [1, 1, 512, 512]).
 	outputShape := ort.NewShape(1, 1, 512, 512)
@@ -75,7 +75,7 @@ func (e *Extractor) Extract(pngData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create output tensor: %w", err)
 	}
-	defer outputTensor.Destroy()
+	defer func() { _ = outputTensor.Destroy() }()
 
 	// Create and run ONNX session.
 	session, err := ort.NewAdvancedSession(
@@ -89,7 +89,7 @@ func (e *Extractor) Extract(pngData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create ONNX session: %w", err)
 	}
-	defer session.Destroy()
+	defer func() { _ = session.Destroy() }()
 
 	if err := session.Run(); err != nil {
 		return nil, fmt.Errorf("run inference: %w", err)

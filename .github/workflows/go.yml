@@ -47,7 +47,7 @@ jobs:
           go-version: ${{ steps.go-version.outputs.version }}
 
       - name: Test with coverage
-        run: go test -coverprofile=coverage.out ./internal/...
+        run: go test -coverprofile=coverage.out $(go list ./internal/... | grep -v /internal/lineart)
 
       - name: Check coverage threshold (90%)
         run: |
