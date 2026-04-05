@@ -38,8 +38,8 @@ tasks:
       - common:install:frontend:deps
     silent: true
     cmds:
-      - wails3 generate bindings || true
-      - GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe .
+      - wails3 generate bindings ./gateway/cmd/anime-craft || true
+      - GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe ./gateway/cmd/anime-craft
       - |
         echo ""
         echo "Build complete. Run from Windows PowerShell:"

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/michael-freling/anime-craft/internal/model"
+	"github.com/michael-freling/anime-craft/gateway/internal/model"
 )
 
 type SessionRepository struct {

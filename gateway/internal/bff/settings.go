@@ -1,6 +1,6 @@
 package bff
 
-import "github.com/michael-freling/anime-craft/internal/model"
+import "github.com/michael-freling/anime-craft/gateway/internal/model"
 
 type SettingsService struct{}
 

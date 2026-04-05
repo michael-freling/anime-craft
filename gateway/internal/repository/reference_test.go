@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/michael-freling/anime-craft/internal/model"
+	"github.com/michael-freling/anime-craft/gateway/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

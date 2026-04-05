@@ -3,7 +3,7 @@ package repository
 import (
 	"fmt"
 
-	"github.com/michael-freling/anime-craft/internal/model"
+	"github.com/michael-freling/anime-craft/gateway/internal/model"
 )
 
 type ReferenceRepository struct {

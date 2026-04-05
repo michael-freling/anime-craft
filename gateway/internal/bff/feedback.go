@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/michael-freling/anime-craft/internal/ai"
-	"github.com/michael-freling/anime-craft/internal/model"
-	"github.com/michael-freling/anime-craft/internal/repository"
+	"github.com/michael-freling/anime-craft/gateway/internal/ai"
+	"github.com/michael-freling/anime-craft/gateway/internal/model"
+	"github.com/michael-freling/anime-craft/gateway/internal/repository"
 )
 
 type FeedbackService struct {

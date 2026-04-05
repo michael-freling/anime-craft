@@ -1,21 +1,17 @@
 package main
 
 import (
-	"embed"
-	_ "embed"
 	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/adrg/xdg"
-	"github.com/michael-freling/anime-craft/internal/ai"
-	"github.com/michael-freling/anime-craft/internal/bff"
-	"github.com/michael-freling/anime-craft/internal/repository"
+	"github.com/michael-freling/anime-craft/frontend"
+	"github.com/michael-freling/anime-craft/gateway/internal/ai"
+	"github.com/michael-freling/anime-craft/gateway/internal/bff"
+	"github.com/michael-freling/anime-craft/gateway/internal/repository"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 func main() {
 	dataDir := filepath.Join(xdg.DataHome, "anime-craft")
@@ -50,7 +46,7 @@ func main() {
 			application.NewService(bff.NewSettingsService()),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: application.AssetFileServerFS(frontend.Assets),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
