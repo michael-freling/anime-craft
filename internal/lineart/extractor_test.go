@@ -2,11 +2,13 @@ package lineart
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -109,4 +111,59 @@ func TestExtractorExtract(t *testing.T) {
 		t.Fatalf("write output PNG: %v", err)
 	}
 	t.Logf("Output saved to %s", outPath)
+}
+
+// TestExtractorEndToEnd simulates the full feedback flow:
+// reference PNG → ONNX extraction → base64 data URI → decode back to image.
+// This proves the backend chain returns a renderable line art image.
+func TestExtractorEndToEnd(t *testing.T) {
+	root := repoRoot(t)
+
+	modelPath := requireFile(t, root, modelRelPath, "ONNX model")
+	libraryPath := requireFile(t, root, libraryRelPath, "ONNX Runtime library")
+
+	inputPNG := createTestPNG(t)
+
+	extractor, err := NewExtractor(modelPath, libraryPath)
+	if err != nil {
+		t.Fatalf("NewExtractor: %v", err)
+	}
+	defer extractor.Close()
+
+	// Step 1: Extract line art (same as populateLineArt in BFF)
+	lineArtBytes, err := extractor.Extract(inputPNG)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Step 2: Encode as data URI (same as populateLineArt in BFF)
+	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(lineArtBytes)
+
+	// Step 3: Verify the data URI is non-empty and has the right prefix
+	if !strings.HasPrefix(dataURI, "data:image/png;base64,") {
+		t.Fatalf("expected data URI prefix, got: %s", dataURI[:50])
+	}
+	t.Logf("Data URI length: %d bytes", len(dataURI))
+
+	// Step 4: Decode back from the data URI (simulates what the browser does)
+	b64Data := strings.TrimPrefix(dataURI, "data:image/png;base64,")
+	decoded, err := base64.StdEncoding.DecodeString(b64Data)
+	if err != nil {
+		t.Fatalf("decode base64: %v", err)
+	}
+
+	img, err := png.Decode(bytes.NewReader(decoded))
+	if err != nil {
+		t.Fatalf("decode PNG from data URI: %v", err)
+	}
+
+	bounds := img.Bounds()
+	if bounds.Dx() != 512 || bounds.Dy() != 512 {
+		t.Errorf("expected 512x512, got %dx%d", bounds.Dx(), bounds.Dy())
+	}
+	if img.ColorModel() != color.GrayModel {
+		t.Errorf("expected grayscale, got %T", img.ColorModel())
+	}
+
+	t.Logf("End-to-end: reference PNG → ONNX → base64 data URI → 512x512 grayscale PNG ✓")
 }
