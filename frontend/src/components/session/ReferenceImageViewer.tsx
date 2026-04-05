@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { GetReference } from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import {
+  GetReference,
+  GetReferenceImageData,
+} from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
 
 interface ReferenceImageViewerProps {
   referenceId: string;
@@ -7,17 +10,20 @@ interface ReferenceImageViewerProps {
 
 function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
   const [title, setTitle] = useState<string | null>(null);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
     setTitle(null);
+    setImageDataUrl(null);
 
-    GetReference(referenceId)
-      .then((ref) => {
+    Promise.all([GetReference(referenceId), GetReferenceImageData(referenceId)])
+      .then(([ref, dataUrl]) => {
         if (!cancelled) {
           setTitle(ref.title);
+          setImageDataUrl(dataUrl);
         }
       })
       .catch((e) => {
@@ -39,7 +45,7 @@ function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
     );
   }
 
-  if (!title) {
+  if (!title || !imageDataUrl) {
     return (
       <div className="session-loading" data-testid="reference-loading">
         Loading reference...
@@ -48,9 +54,12 @@ function ReferenceImageViewer({ referenceId }: ReferenceImageViewerProps) {
   }
 
   return (
-    <div className="reference-placeholder" data-testid="reference-placeholder">
-      <span className="reference-placeholder-text">{title}</span>
-    </div>
+    <img
+      className="session-reference-img"
+      data-testid="reference-image"
+      src={imageDataUrl}
+      alt={title}
+    />
   );
 }
 

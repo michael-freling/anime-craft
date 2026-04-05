@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.11
+	github.com/yalue/onnxruntime_go v1.27.0
 	modernc.org/sqlite v1.46.1
 )
 

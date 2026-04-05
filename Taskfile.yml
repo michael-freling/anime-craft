@@ -27,24 +27,93 @@ tasks:
     cmds:
       - task: "{{OS}}:run"
 
+  lineart:model:
+    desc: Download Anime2Sketch weights and convert to ONNX
+    dir: inference/lineart
+    status:
+      - test -f anime2sketch.onnx
+    cmds:
+      - pdm install
+      - pdm run convert
+
+  lineart:onnxruntime:windows:
+    desc: Download ONNX Runtime shared library for Windows
+    status:
+      - test -f onnxruntime/lib/onnxruntime.dll
+    cmds:
+      - mkdir -p onnxruntime
+      - curl -L -o /tmp/onnxruntime-win.zip "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip"
+      - unzip -o /tmp/onnxruntime-win.zip -d /tmp/onnxruntime-win
+      - cp -r /tmp/onnxruntime-win/onnxruntime-win-x64-1.24.4/lib onnxruntime/
+      - cp -r /tmp/onnxruntime-win/onnxruntime-win-x64-1.24.4/include onnxruntime/
+      - rm -rf /tmp/onnxruntime-win /tmp/onnxruntime-win.zip
+
+  lineart:onnxruntime:linux:
+    desc: Download ONNX Runtime shared library for Linux
+    status:
+      - test -f onnxruntime/lib/libonnxruntime.so
+    cmds:
+      - mkdir -p onnxruntime
+      - curl -L -o /tmp/onnxruntime-linux.tgz "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz"
+      - tar xzf /tmp/onnxruntime-linux.tgz -C /tmp
+      - cp -r /tmp/onnxruntime-linux-x64-1.24.4/lib onnxruntime/
+      - cp -r /tmp/onnxruntime-linux-x64-1.24.4/include onnxruntime/
+      - rm -rf /tmp/onnxruntime-linux-x64-1.24.4 /tmp/onnxruntime-linux.tgz
+
+  lineart:setup:
+    desc: Set up line art extraction (model + runtime)
+    deps:
+      - lineart:model
+
+  lineart:setup:wsl:
+    desc: Set up line art extraction for WSL→Windows
+    deps:
+      - lineart:model
+      - lineart:onnxruntime:windows
+
+  lineart:setup:linux:
+    desc: Set up line art extraction for Linux
+    deps:
+      - lineart:model
+      - lineart:onnxruntime:linux
+
   dev:
     summary: Runs the application in development mode
+    deps:
+      - lineart:setup:linux
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  e2e:
+    desc: Run E2E tests with AT-SPI
+    cmds:
+      - go build -cover -o anime-craft .
+      - mkdir -p /tmp/gocoverdir
+      - dbus-run-session -- xvfb-run -a env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge python3 -m pytest e2e/ -v --tb=short
 
   dev:wsl:
     summary: Cross-compile Windows exe and start Vite dev server for WSL→Windows development
     deps:
       - common:install:frontend:deps
+      - lineart:setup:wsl
+    vars:
+      WIN_DEV_DIR: /mnt/c/temp/anime-craft-dev
     silent: true
     cmds:
       - wails3 generate bindings || true
-      - GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe .
+      - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe .
+      # Stage exe and runtime files to a local Windows directory so the app
+      # doesn't load DLLs or models from UNC paths (which can fail on Windows).
+      - mkdir -p {{.WIN_DEV_DIR}}/onnxruntime/lib {{.WIN_DEV_DIR}}/inference/lineart
+      - cp anime-craft.exe {{.WIN_DEV_DIR}}/
+      - cp -u onnxruntime/lib/onnxruntime.dll {{.WIN_DEV_DIR}}/onnxruntime/lib/
+      - cmd: cp -u inference/lineart/anime2sketch.onnx {{.WIN_DEV_DIR}}/inference/lineart/
+        ignore_error: true
       - |
         echo ""
         echo "Build complete. Run from Windows PowerShell:"
         echo '  $env:FRONTEND_DEVSERVER_URL="http://localhost:{{.VITE_PORT}}"'
-        echo '  & "\\wsl.localhost\Ubuntu-24.04\home\michael\src\github.com\michael-freling\anime-craft\anime-craft.exe"'
+        echo '  & "C:\temp\anime-craft-dev\anime-craft.exe"'
         echo ""
         echo "Starting Vite dev server on port {{.VITE_PORT}}..."
       - cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}}

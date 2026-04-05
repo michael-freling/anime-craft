@@ -119,3 +119,43 @@ func TestReferenceRepository_Delete_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reference image not found")
 }
+
+func TestReferenceRepository_List_DBClosed(t *testing.T) {
+	db := testDB(t)
+	repo := NewReferenceRepository(db)
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.List("")
+	require.Error(t, err)
+}
+
+func TestReferenceRepository_Delete_DBClosed(t *testing.T) {
+	db := testDB(t)
+	repo := NewReferenceRepository(db)
+
+	require.NoError(t, db.Close())
+
+	err := repo.Delete("ref-001")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete reference image")
+}
+
+func TestReferenceRepository_List_AllModes(t *testing.T) {
+	db := testDB(t)
+	repo := NewReferenceRepository(db)
+
+	// List with empty mode string returns all references
+	all, err := repo.List("")
+	require.NoError(t, err)
+	assert.Len(t, all, 2) // seed data has 2 references
+
+	// Verify each has expected fields populated
+	for _, img := range all {
+		assert.NotEmpty(t, img.ID)
+		assert.NotEmpty(t, img.Title)
+		assert.NotEmpty(t, img.FilePath)
+		assert.NotEmpty(t, img.ExerciseMode)
+		assert.NotEmpty(t, img.Difficulty)
+	}
+}

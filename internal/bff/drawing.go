@@ -68,3 +68,19 @@ func (s *DrawingService) GetDrawing(sessionID string) (model.Drawing, error) {
 	}
 	return drawing, nil
 }
+
+// GetDrawingImageData returns the base64-encoded image data for a drawing.
+func (s *DrawingService) GetDrawingImageData(sessionID string) (string, error) {
+	drawing, err := s.repo.GetBySessionID(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("get drawing: %w", err)
+	}
+
+	data, err := os.ReadFile(drawing.FilePath)
+	if err != nil {
+		return "", fmt.Errorf("read drawing file: %w", err)
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:image/png;base64,%s", encoded), nil
+}

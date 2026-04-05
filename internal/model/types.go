@@ -30,17 +30,10 @@ type Drawing struct {
 }
 
 type Feedback struct {
-	ID                 string    `json:"id"`
-	SessionID          string    `json:"sessionId"`
-	OverallScore       int       `json:"overallScore"`
-	ProportionsScore   *int      `json:"proportionsScore"`
-	LineQualityScore   *int      `json:"lineQualityScore"`
-	ColorAccuracyScore *int      `json:"colorAccuracyScore"`
-	Summary            string    `json:"summary"`
-	Details            string    `json:"details"`
-	Strengths          []string  `json:"strengths"`
-	Improvements       []string  `json:"improvements"`
-	CreatedAt          time.Time `json:"createdAt"`
+	ID               string    `json:"id"`
+	SessionID        string    `json:"sessionId"`
+	ReferenceLineArt string    `json:"referenceLineArt"` // base64 data URI, not stored in DB
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 type Achievement struct {

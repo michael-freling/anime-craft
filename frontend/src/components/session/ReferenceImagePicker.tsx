@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ListReferences, AddReference } from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { useCallback, useEffect, useState } from "react";
+import { ListReferences, AddReferenceByFilePath } from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
 
 interface ReferenceImagePickerProps {
   selectedRef: string | null;
@@ -15,7 +15,6 @@ function ReferenceImagePicker({
   const [images, setImages] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadReferences = useCallback(() => {
     setError(null);
@@ -53,21 +52,35 @@ function ReferenceImagePicker({
     };
   }, []);
 
-  const handleAddClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    setError(null);
-
+  const handleAddClick = async () => {
     try {
-      const base64Data = await readFileAsBase64(file);
-      const title = file.name.replace(/\.[^/.]+$/, "");
-      await AddReference(title, "beginner", base64Data);
+      // Dynamically import Dialogs to avoid the @wailsio/runtime index.js
+      // side effect (System.invoke("wails:runtime:ready")) at module load time,
+      // which causes initialization race conditions in dev mode.
+      const { Dialogs } = await import("@wailsio/runtime");
+
+      // Use Wails' native file dialog instead of HTML file input.
+      // This returns the file path as a string, avoiding base64 in URL params.
+      const filePath = await Dialogs.OpenFile({
+        Title: "Select Reference Image",
+        Filters: [
+          {
+            DisplayName: "Images",
+            Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp",
+          },
+        ],
+      });
+
+      if (!filePath) return; // User cancelled
+
+      setUploading(true);
+      setError(null);
+
+      // Extract title from filename
+      const fileName = filePath.split(/[/\\]/).pop() || "untitled";
+      const title = fileName.replace(/\.[^/.]+$/, "");
+
+      await AddReferenceByFilePath(title, "beginner", filePath);
       await loadReferences();
     } catch (err) {
       const message =
@@ -76,10 +89,6 @@ function ReferenceImagePicker({
       setError(message);
     } finally {
       setUploading(false);
-      // Reset file input so the same file can be selected again
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
   };
 
@@ -91,14 +100,6 @@ function ReferenceImagePicker({
       role="button"
       aria-label="Add Image"
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        style={{ display: "none" }}
-        data-testid="reference-file-input"
-      />
       <div className="reference-card-add-content">
         <span className="reference-card-add-icon">+</span>
         <span className="reference-card-add-label">
@@ -139,22 +140,6 @@ function ReferenceImagePicker({
       </div>
     </div>
   );
-}
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data URL prefix (e.g. "data:image/png;base64,")
-      const base64 = result.split(",")[1] ?? result;
-      resolve(base64);
-    };
-    reader.onerror = () => {
-      reject(new Error("Failed to read file"));
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 export default ReferenceImagePicker;

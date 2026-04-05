@@ -1,0 +1,26 @@
+[project]
+name = "anime-craft-lineart"
+version = "0.1.0"
+description = "Convert Anime2Sketch PyTorch model to ONNX"
+authors = [
+    { name = "Michael", email = "80940180+michael-freling@users.noreply.github.com" },
+]
+dependencies = [
+    "torch",
+    "onnx",
+    "onnxscript",
+    "gdown",
+]
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+
+[dependency-groups]
+dev = ["pytest", "onnxruntime"]
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.scripts]
+convert = "python convert_to_onnx.py"
+test = "pytest test_convert.py -v"

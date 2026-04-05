@@ -1,0 +1,5 @@
+anime2sketch.onnx
+.venv/
+__pycache__/
+*.pyc
+.pdm-python

@@ -1,26 +1,16 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import ScoreDisplay from "../components/feedback/ScoreDisplay";
-import CategoryBreakdown from "../components/feedback/CategoryBreakdown";
-import FeedbackComments from "../components/feedback/FeedbackComments";
 import SideBySideComparison from "../components/feedback/SideBySideComparison";
 import {
   RequestFeedback,
   GetFeedback,
 } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/feedbackservice.js";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
-import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
+import { GetReferenceImageData } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { GetDrawingImageData } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
 
 interface FeedbackData {
-  overallScore: number;
-  proportionsScore: number | null;
-  lineQualityScore: number | null;
-  colorAccuracyScore: number | null;
-  summary: string;
-  details: string;
-  strengths: string[];
-  improvements: string[];
+  referenceLineArt: string; // base64 data URI
 }
 
 function FeedbackPage() {
@@ -50,28 +40,21 @@ function FeedbackPage() {
         if (cancelled) return;
 
         setFeedback({
-          overallScore: fb.overallScore,
-          proportionsScore: fb.proportionsScore ?? null,
-          lineQualityScore: fb.lineQualityScore ?? null,
-          colorAccuracyScore: fb.colorAccuracyScore ?? null,
-          summary: fb.summary,
-          details: fb.details,
-          strengths: fb.strengths || [],
-          improvements: fb.improvements || [],
+          referenceLineArt: fb.referenceLineArt || "",
         });
 
         // Load images for comparison
         const session = await GetSession(id!);
         if (cancelled) return;
 
-        const [ref, drawing] = await Promise.all([
-          GetReference(session.referenceImageId),
-          GetDrawing(id!),
+        const [refImageData, drawingImageData] = await Promise.all([
+          GetReferenceImageData(session.referenceImageId),
+          GetDrawingImageData(id!),
         ]);
 
         if (cancelled) return;
-        setReferenceImageUrl(ref.filePath);
-        setDrawingImageUrl(drawing.filePath);
+        setReferenceImageUrl(refImageData);
+        setDrawingImageUrl(drawingImageData);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load feedback");
@@ -111,25 +94,11 @@ function FeedbackPage() {
     <div className="feedback-page" data-testid="feedback-page">
       <h1>Drawing Feedback</h1>
 
-      <div className="feedback-top">
-        <ScoreDisplay score={feedback.overallScore} />
-        <CategoryBreakdown
-          proportionsScore={feedback.proportionsScore}
-          lineQualityScore={feedback.lineQualityScore}
-          colorAccuracyScore={feedback.colorAccuracyScore}
-        />
-      </div>
-
-      <FeedbackComments
-        summary={feedback.summary}
-        strengths={feedback.strengths}
-        improvements={feedback.improvements}
-      />
-
       {referenceImageUrl && drawingImageUrl && (
         <SideBySideComparison
           referenceImageUrl={referenceImageUrl}
           drawingImageUrl={drawingImageUrl}
+          lineArtUrl={feedback.referenceLineArt}
         />
       )}
 
