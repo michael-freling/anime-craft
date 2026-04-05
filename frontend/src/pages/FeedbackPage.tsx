@@ -7,10 +7,10 @@ import SideBySideComparison from "../components/feedback/SideBySideComparison";
 import {
   RequestFeedback,
   GetFeedback,
-} from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/feedbackservice.js";
-import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
-import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
+} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
+import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
+import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
 
 interface FeedbackData {
   overallScore: number;

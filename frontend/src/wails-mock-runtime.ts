@@ -2,7 +2,7 @@
 // Maps Wails function IDs to mock responses.
 //
 // Function IDs are extracted from the auto-generated bindings in
-// frontend/bindings/github.com/michael-freling/anime-craft/internal/bff/*.js.
+// frontend/bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/*.js.
 // If the bindings are regenerated, these IDs may change and must be updated.
 
 const mockReferences = [
