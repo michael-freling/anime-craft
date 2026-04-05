@@ -372,6 +372,56 @@ func TestFeedbackService_RequestFeedback_WithLineArt(t *testing.T) {
 		"ReferenceLineArt should contain base64 data after the prefix")
 }
 
+func TestFeedbackService_RequestFeedback_CachedWithLineArt(t *testing.T) {
+	db := testDB(t)
+	feedbackRepo := repository.NewFeedbackRepository(db)
+	sessionRepo := repository.NewSessionRepository(db)
+	drawingRepo := repository.NewDrawingRepository(db)
+	refRepo := repository.NewReferenceRepository(db)
+
+	dataDir := t.TempDir()
+
+	extractor := &mockLineArtExtractor{}
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, extractor)
+
+	// Create a valid PNG reference image file
+	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
+	createTestPNGFile(t, refImagePath)
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
+	require.NoError(t, err)
+
+	// Create a session
+	require.NoError(t, sessionRepo.Create(model.Session{
+		ID:               "sess-cached-lineart",
+		ReferenceImageID: "ref-001",
+		ExerciseMode:     "line_work",
+		Status:           "completed",
+		StartedAt:        time.Now(),
+	}))
+
+	// Create a drawing
+	drawingPath := filepath.Join(dataDir, "drawings", "sess-cached-lineart.png")
+	createTestPNGFile(t, drawingPath)
+	require.NoError(t, drawingRepo.Create(model.Drawing{
+		ID:        "draw-cached-lineart",
+		SessionID: "sess-cached-lineart",
+		FilePath:  drawingPath,
+		CreatedAt: time.Now(),
+	}))
+
+	// First call creates feedback
+	first, err := svc.RequestFeedback("sess-cached-lineart")
+	require.NoError(t, err)
+	assert.Contains(t, first.ReferenceLineArt, "data:image/png;base64,")
+
+	// Second call hits the cached path — must still return line art
+	second, err := svc.RequestFeedback("sess-cached-lineart")
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, second.ID, "should return same feedback")
+	assert.Contains(t, second.ReferenceLineArt, "data:image/png;base64,",
+		"cached RequestFeedback must still populate line art")
+}
+
 func TestFeedbackService_GetFeedback_WithLineArt(t *testing.T) {
 	db := testDB(t)
 	feedbackRepo := repository.NewFeedbackRepository(db)

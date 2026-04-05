@@ -44,6 +44,8 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	// Check if feedback already exists for this session
 	existing, err := s.repo.GetBySessionID(sessionID)
 	if err == nil {
+		// ReferenceLineArt is transient (not in DB), so re-populate it.
+		s.populateLineArtForSession(&existing, sessionID)
 		return existing, nil
 	}
 
@@ -76,6 +78,7 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 		// for this session between our existence check and this insert.
 		existing, getErr := s.repo.GetBySessionID(sessionID)
 		if getErr == nil {
+			s.populateLineArt(&existing, refData)
 			return existing, nil
 		}
 		slog.Error("failed to store feedback", "method", "RequestFeedback", "sessionID", sessionID, "error", err)
@@ -94,26 +97,39 @@ func (s *FeedbackService) GetFeedback(sessionID string) (model.Feedback, error) 
 		return model.Feedback{}, err
 	}
 
-	if s.lineArtExtractor != nil {
-		session, err := s.sessionRepo.Get(sessionID)
-		if err != nil {
-			slog.Error("failed to get session for line art", "method", "GetFeedback", "sessionID", sessionID, "error", err)
-		} else {
-			refImage, err := s.refRepo.Get(session.ReferenceImageID)
-			if err != nil {
-				slog.Error("failed to get reference image for line art", "method", "GetFeedback", "sessionID", sessionID, "error", err)
-			} else {
-				refData, err := os.ReadFile(filepath.Join(s.dataDir, refImage.FilePath))
-				if err != nil {
-					slog.Error("failed to read reference image for line art", "method", "GetFeedback", "sessionID", sessionID, "error", err)
-				} else {
-					s.populateLineArt(&feedback, refData)
-				}
-			}
-		}
-	}
+	s.populateLineArtForSession(&feedback, sessionID)
 
 	return feedback, nil
+}
+
+// populateLineArtForSession loads the reference image for the session and
+// extracts line art. Errors are logged but don't fail the request.
+func (s *FeedbackService) populateLineArtForSession(feedback *model.Feedback, sessionID string) {
+	if s.lineArtExtractor == nil {
+		slog.Warn("line art extractor not available, skipping line art", "sessionID", sessionID)
+		return
+	}
+
+	session, err := s.sessionRepo.Get(sessionID)
+	if err != nil {
+		slog.Error("failed to get session for line art", "sessionID", sessionID, "error", err)
+		return
+	}
+
+	refImage, err := s.refRepo.Get(session.ReferenceImageID)
+	if err != nil {
+		slog.Error("failed to get reference image for line art", "sessionID", sessionID, "error", err)
+		return
+	}
+
+	refPath := filepath.Join(s.dataDir, refImage.FilePath)
+	refData, err := os.ReadFile(refPath)
+	if err != nil {
+		slog.Error("failed to read reference image for line art", "sessionID", sessionID, "path", refPath, "error", err)
+		return
+	}
+
+	s.populateLineArt(feedback, refData)
 }
 
 // populateLineArt extracts line art from the reference image data and sets
