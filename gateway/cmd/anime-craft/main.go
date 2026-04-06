@@ -33,6 +33,7 @@ func main() {
 	feedbackRepo := repository.NewFeedbackRepository(db)
 
 	aiClient := ai.NewMockFeedbackClient()
+	lineArtExtractor := initLineArtExtractor()
 
 	app := application.New(application.Options{
 		Name:        "anime-craft",
@@ -40,7 +41,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(bff.NewSessionService(sessionRepo)),
 			application.NewService(bff.NewDrawingService(drawingRepo, dataDir)),
-			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir)),
+			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, lineArtExtractor)),
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),

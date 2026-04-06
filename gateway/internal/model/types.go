@@ -40,6 +40,7 @@ type Feedback struct {
 	Details            string    `json:"details"`
 	Strengths          []string  `json:"strengths"`
 	Improvements       []string  `json:"improvements"`
+	ReferenceLineArt   string    `json:"referenceLineArt"` // base64 data URI, not stored in DB
 	CreatedAt          time.Time `json:"createdAt"`
 }
 

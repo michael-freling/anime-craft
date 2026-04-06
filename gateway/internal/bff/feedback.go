@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,12 +15,13 @@ import (
 )
 
 type FeedbackService struct {
-	repo        *repository.FeedbackRepository
-	sessionRepo *repository.SessionRepository
-	drawingRepo *repository.DrawingRepository
-	refRepo     *repository.ReferenceRepository
-	aiClient    ai.FeedbackClient
-	dataDir     string
+	repo             *repository.FeedbackRepository
+	sessionRepo      *repository.SessionRepository
+	drawingRepo      *repository.DrawingRepository
+	refRepo          *repository.ReferenceRepository
+	aiClient         ai.FeedbackClient
+	dataDir          string
+	lineArtExtractor LineArtExtractor // may be nil if not configured
 }
 
 func NewFeedbackService(
@@ -29,14 +31,16 @@ func NewFeedbackService(
 	refRepo *repository.ReferenceRepository,
 	aiClient ai.FeedbackClient,
 	dataDir string,
+	lineArtExtractor LineArtExtractor,
 ) *FeedbackService {
 	return &FeedbackService{
-		repo:        repo,
-		sessionRepo: sessionRepo,
-		drawingRepo: drawingRepo,
-		refRepo:     refRepo,
-		aiClient:    aiClient,
-		dataDir:     dataDir,
+		repo:             repo,
+		sessionRepo:      sessionRepo,
+		drawingRepo:      drawingRepo,
+		refRepo:          refRepo,
+		aiClient:         aiClient,
+		dataDir:          dataDir,
+		lineArtExtractor: lineArtExtractor,
 	}
 }
 
@@ -44,6 +48,8 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	// Check if feedback already exists for this session
 	existing, err := s.repo.GetBySessionID(sessionID)
 	if err == nil {
+		// ReferenceLineArt is transient (not in DB), so re-populate it.
+		s.populateLineArtForSession(&existing, sessionID)
 		return existing, nil
 	}
 
@@ -112,9 +118,18 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	}
 
 	if err := s.repo.Create(feedback); err != nil {
+		// Handle race condition: another concurrent call may have inserted feedback
+		// for this session between our existence check and this insert.
+		existing, getErr := s.repo.GetBySessionID(sessionID)
+		if getErr == nil {
+			s.populateLineArt(&existing, refData)
+			return existing, nil
+		}
 		slog.Error("failed to store feedback", "method", "RequestFeedback", "sessionID", sessionID, "error", err)
 		return model.Feedback{}, fmt.Errorf("store feedback: %w", err)
 	}
+
+	s.populateLineArt(&feedback, refData)
 
 	return feedback, nil
 }
@@ -125,5 +140,52 @@ func (s *FeedbackService) GetFeedback(sessionID string) (model.Feedback, error) 
 		slog.Error("failed to get feedback", "method", "GetFeedback", "sessionID", sessionID, "error", err)
 		return model.Feedback{}, err
 	}
+
+	s.populateLineArtForSession(&feedback, sessionID)
+
 	return feedback, nil
+}
+
+// populateLineArtForSession loads the reference image for the session and
+// extracts line art. Errors are logged but don't fail the request.
+func (s *FeedbackService) populateLineArtForSession(feedback *model.Feedback, sessionID string) {
+	if s.lineArtExtractor == nil {
+		slog.Warn("line art extractor not available, skipping line art", "sessionID", sessionID)
+		return
+	}
+
+	session, err := s.sessionRepo.Get(sessionID)
+	if err != nil {
+		slog.Error("failed to get session for line art", "sessionID", sessionID, "error", err)
+		return
+	}
+
+	refImage, err := s.refRepo.Get(session.ReferenceImageID)
+	if err != nil {
+		slog.Error("failed to get reference image for line art", "sessionID", sessionID, "error", err)
+		return
+	}
+
+	refData, err := os.ReadFile(refImage.FilePath)
+	if err != nil {
+		slog.Error("failed to read reference image for line art", "sessionID", sessionID, "path", refImage.FilePath, "error", err)
+		return
+	}
+
+	s.populateLineArt(feedback, refData)
+}
+
+// populateLineArt extracts line art from the reference image data and sets
+// the ReferenceLineArt field on the feedback. If the extractor is nil or
+// extraction fails, the field is left empty and the error is logged.
+func (s *FeedbackService) populateLineArt(feedback *model.Feedback, refData []byte) {
+	if s.lineArtExtractor == nil {
+		return
+	}
+	lineArtBytes, err := s.lineArtExtractor.Extract(refData)
+	if err != nil {
+		slog.Error("failed to extract line art", "method", "populateLineArt", "sessionID", feedback.SessionID, "error", err)
+		return
+	}
+	feedback.ReferenceLineArt = "data:image/png;base64," + base64.StdEncoding.EncodeToString(lineArtBytes)
 }

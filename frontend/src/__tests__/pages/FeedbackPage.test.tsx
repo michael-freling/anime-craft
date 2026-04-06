@@ -50,6 +50,7 @@ describe('FeedbackPage', () => {
       details: 'Your line work shows promise.',
       strengths: ['Clean line strokes', 'Good proportions'],
       improvements: ['Work on line confidence', 'Practice curves'],
+      referenceLineArt: '',
     });
     mockGetSession.mockResolvedValue({
       id: 'session-001',
@@ -114,5 +115,29 @@ describe('FeedbackPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Service error')).toBeInTheDocument();
     });
+  });
+
+  it('renders line art panel when referenceLineArt is provided', async () => {
+    mockGetFeedback.mockResolvedValue({
+      overallScore: 75,
+      proportionsScore: 80,
+      lineQualityScore: 70,
+      colorAccuracyScore: null,
+      summary: 'Good attempt.',
+      details: 'Details here.',
+      strengths: ['Good proportions'],
+      improvements: ['Practice more'],
+      referenceLineArt: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12P4/x8AAwAB/aurH8kAAAAASUVORK5CYII=',
+    });
+
+    renderFeedbackPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('side-by-side')).toBeInTheDocument();
+    });
+
+    const lineArtImg = screen.getByTestId('comparison-lineart') as HTMLImageElement;
+    expect(lineArtImg.src).toContain('data:image/png;base64,');
+    expect(screen.getByText('Reference Line Art')).toBeInTheDocument();
   });
 });

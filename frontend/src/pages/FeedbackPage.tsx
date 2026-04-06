@@ -21,6 +21,7 @@ interface FeedbackData {
   details: string;
   strengths: string[];
   improvements: string[];
+  referenceLineArt: string;
 }
 
 function FeedbackPage() {
@@ -58,6 +59,7 @@ function FeedbackPage() {
           details: fb.details,
           strengths: fb.strengths || [],
           improvements: fb.improvements || [],
+          referenceLineArt: fb.referenceLineArt || "",
         });
 
         // Load images for comparison
@@ -130,6 +132,7 @@ function FeedbackPage() {
         <SideBySideComparison
           referenceImageUrl={referenceImageUrl}
           drawingImageUrl={drawingImageUrl}
+          lineArtUrl={feedback.referenceLineArt}
         />
       )}
 

@@ -1,5 +1,5 @@
 bin/
-anime-craft
+/anime-craft
 node_modules/
 dist/
 *.exe
@@ -10,3 +10,4 @@ frontend/bindings/
 .task
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+onnxruntime/
