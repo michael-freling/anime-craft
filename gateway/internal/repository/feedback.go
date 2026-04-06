@@ -42,12 +42,13 @@ func (r *FeedbackRepository) Create(feedback model.Feedback) error {
 
 	_, err = r.db.Exec(
 		`INSERT INTO feedback (id, session_id, overall_score, proportions_score, line_quality_score,
-			color_accuracy_score, summary, details, strengths, improvements, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			color_accuracy_score, accuracy_score, summary, details, strengths, improvements, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		feedback.ID, feedback.SessionID, feedback.OverallScore,
 		intPtrToValue(feedback.ProportionsScore),
 		intPtrToValue(feedback.LineQualityScore),
 		intPtrToValue(feedback.ColorAccuracyScore),
+		intPtrToValue(feedback.AccuracyScore),
 		feedback.Summary, feedback.Details,
 		string(strengths), string(improvements), feedback.CreatedAt,
 	)
@@ -60,14 +61,14 @@ func (r *FeedbackRepository) Create(feedback model.Feedback) error {
 func (r *FeedbackRepository) GetBySessionID(sessionID string) (model.Feedback, error) {
 	var f model.Feedback
 	var strengthsJSON, improvementsJSON string
-	var proportions, lineQuality, colorAccuracy int
+	var proportions, lineQuality, colorAccuracy, accuracy int
 	err := r.db.QueryRow(
 		`SELECT id, session_id, overall_score, proportions_score, line_quality_score,
-			color_accuracy_score, summary, details, strengths, improvements, created_at
+			color_accuracy_score, accuracy_score, summary, details, strengths, improvements, created_at
 		FROM feedback WHERE session_id = ?`,
 		sessionID,
 	).Scan(&f.ID, &f.SessionID, &f.OverallScore,
-		&proportions, &lineQuality, &colorAccuracy,
+		&proportions, &lineQuality, &colorAccuracy, &accuracy,
 		&f.Summary, &f.Details,
 		&strengthsJSON, &improvementsJSON, &f.CreatedAt,
 	)
@@ -81,6 +82,7 @@ func (r *FeedbackRepository) GetBySessionID(sessionID string) (model.Feedback, e
 	f.ProportionsScore = intToPtr(proportions)
 	f.LineQualityScore = intToPtr(lineQuality)
 	f.ColorAccuracyScore = intToPtr(colorAccuracy)
+	f.AccuracyScore = intToPtr(accuracy)
 
 	if err := json.Unmarshal([]byte(strengthsJSON), &f.Strengths); err != nil {
 		return model.Feedback{}, fmt.Errorf("unmarshal strengths: %w", err)

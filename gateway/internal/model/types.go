@@ -36,6 +36,7 @@ type Feedback struct {
 	ProportionsScore   *int      `json:"proportionsScore"`
 	LineQualityScore   *int      `json:"lineQualityScore"`
 	ColorAccuracyScore *int      `json:"colorAccuracyScore"`
+	AccuracyScore      *int      `json:"accuracyScore"`
 	Summary            string    `json:"summary"`
 	Details            string    `json:"details"`
 	Strengths          []string  `json:"strengths"`

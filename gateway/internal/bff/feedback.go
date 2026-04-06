@@ -15,13 +15,14 @@ import (
 )
 
 type FeedbackService struct {
-	repo             *repository.FeedbackRepository
-	sessionRepo      *repository.SessionRepository
-	drawingRepo      *repository.DrawingRepository
-	refRepo          *repository.ReferenceRepository
-	aiClient         ai.FeedbackClient
-	dataDir          string
-	lineArtExtractor LineArtExtractor // may be nil if not configured
+	repo              *repository.FeedbackRepository
+	sessionRepo       *repository.SessionRepository
+	drawingRepo       *repository.DrawingRepository
+	refRepo           *repository.ReferenceRepository
+	aiClient          ai.FeedbackClient
+	dataDir           string
+	lineArtExtractor  LineArtExtractor  // may be nil if not configured
+	feedbackGenerator FeedbackGenerator // may be nil if inference service not available
 }
 
 func NewFeedbackService(
@@ -32,15 +33,17 @@ func NewFeedbackService(
 	aiClient ai.FeedbackClient,
 	dataDir string,
 	lineArtExtractor LineArtExtractor,
+	feedbackGenerator FeedbackGenerator,
 ) *FeedbackService {
 	return &FeedbackService{
-		repo:             repo,
-		sessionRepo:      sessionRepo,
-		drawingRepo:      drawingRepo,
-		refRepo:          refRepo,
-		aiClient:         aiClient,
-		dataDir:          dataDir,
-		lineArtExtractor: lineArtExtractor,
+		repo:              repo,
+		sessionRepo:       sessionRepo,
+		drawingRepo:       drawingRepo,
+		refRepo:           refRepo,
+		aiClient:          aiClient,
+		dataDir:           dataDir,
+		lineArtExtractor:  lineArtExtractor,
+		feedbackGenerator: feedbackGenerator,
 	}
 }
 
@@ -83,38 +86,87 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 		return model.Feedback{}, fmt.Errorf("read reference image file: %w", err)
 	}
 
-	resp, err := s.aiClient.AnalyzeDrawing(context.Background(), ai.AnalysisRequest{
-		ReferenceImage: refData,
-		UserDrawing:    drawingData,
-		ExerciseMode:   session.ExerciseMode,
-	})
-	if err != nil {
-		slog.Error("failed to analyze drawing", "method", "RequestFeedback", "sessionID", sessionID, "exerciseMode", session.ExerciseMode, "error", err)
-		return model.Feedback{}, fmt.Errorf("analyze drawing: %w", err)
+	// Try the inference service (feedbackGenerator) first if available.
+	// Fall back to the legacy AI client otherwise.
+	var feedback model.Feedback
+	if s.feedbackGenerator != nil {
+		// Extract line art from the reference image for the inference service.
+		var refLineArt []byte
+		if s.lineArtExtractor != nil {
+			refLineArt, err = s.lineArtExtractor.Extract(refData)
+			if err != nil {
+				slog.Warn("line art extraction failed for feedback generator, using raw ref image",
+					"sessionID", sessionID, "error", err)
+				refLineArt = refData
+			}
+		} else {
+			refLineArt = refData
+		}
+
+		result, genErr := s.feedbackGenerator.GenerateFeedback(
+			context.Background(), refLineArt, drawingData, session.ExerciseMode,
+		)
+		if genErr != nil {
+			slog.Warn("inference feedback generator failed, falling back to AI client",
+				"sessionID", sessionID, "error", genErr)
+		} else {
+			feedback = model.Feedback{
+				ID:           uuid.New().String(),
+				SessionID:    sessionID,
+				OverallScore: int(result.GetOverallScore()),
+				Summary:      result.GetSummary(),
+				Details:      result.GetDetails(),
+				Strengths:    result.GetStrengths(),
+				Improvements: result.GetImprovements(),
+				CreatedAt:    time.Now(),
+			}
+			if score := int(result.GetProportionsScore()); score > 0 {
+				feedback.ProportionsScore = &score
+			}
+			if score := int(result.GetLineQualityScore()); score > 0 {
+				feedback.LineQualityScore = &score
+			}
+			if score := int(result.GetAccuracyScore()); score > 0 {
+				feedback.AccuracyScore = &score
+			}
+		}
 	}
 
-	feedback := model.Feedback{
-		ID:           uuid.New().String(),
-		SessionID:    sessionID,
-		OverallScore: resp.OverallScore,
-		Summary:      resp.Summary,
-		Details:      resp.Details,
-		Strengths:    resp.Strengths,
-		Improvements: resp.Improvements,
-		CreatedAt:    time.Now(),
-	}
+	// Fall back to the legacy AI client if feedbackGenerator was nil or failed.
+	if feedback.ID == "" {
+		resp, err := s.aiClient.AnalyzeDrawing(context.Background(), ai.AnalysisRequest{
+			ReferenceImage: refData,
+			UserDrawing:    drawingData,
+			ExerciseMode:   session.ExerciseMode,
+		})
+		if err != nil {
+			slog.Error("failed to analyze drawing", "method", "RequestFeedback", "sessionID", sessionID, "exerciseMode", session.ExerciseMode, "error", err)
+			return model.Feedback{}, fmt.Errorf("analyze drawing: %w", err)
+		}
 
-	if resp.ProportionsScore > 0 {
-		score := resp.ProportionsScore
-		feedback.ProportionsScore = &score
-	}
-	if resp.LineQualityScore > 0 {
-		score := resp.LineQualityScore
-		feedback.LineQualityScore = &score
-	}
-	if resp.ColorAccuracyScore > 0 {
-		score := resp.ColorAccuracyScore
-		feedback.ColorAccuracyScore = &score
+		feedback = model.Feedback{
+			ID:           uuid.New().String(),
+			SessionID:    sessionID,
+			OverallScore: resp.OverallScore,
+			Summary:      resp.Summary,
+			Details:      resp.Details,
+			Strengths:    resp.Strengths,
+			Improvements: resp.Improvements,
+			CreatedAt:    time.Now(),
+		}
+
+		if resp.ProportionsScore > 0 {
+			score := resp.ProportionsScore
+			feedback.ProportionsScore = &score
+		}
+		if resp.LineQualityScore > 0 {
+			score := resp.LineQualityScore
+			feedback.LineQualityScore = &score
+		}
+		if resp.ColorAccuracyScore > 0 {
+			score := resp.ColorAccuracyScore
+			feedback.ColorAccuracyScore = &score
+		}
 	}
 
 	if err := s.repo.Create(feedback); err != nil {

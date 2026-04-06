@@ -58,7 +58,7 @@ func TestFeedbackService_RequestFeedback(t *testing.T) {
 
 	dataDir := t.TempDir()
 
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
 
 	// Create reference image file and update seeded ref-001 to point to it
 	refPath := filepath.Join(dataDir, "ref.png")
@@ -117,7 +117,7 @@ func TestFeedbackService_RequestFeedback_ReturnsCached(t *testing.T) {
 
 	dataDir := t.TempDir()
 
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
 
 	// Create reference image file and update seeded ref-001 to point to it
 	refPath := filepath.Join(dataDir, "ref.png")
@@ -167,7 +167,7 @@ func TestFeedbackService_RequestFeedback_WithLineArt(t *testing.T) {
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
@@ -216,7 +216,7 @@ func TestFeedbackService_RequestFeedback_CachedWithLineArt(t *testing.T) {
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
@@ -267,7 +267,7 @@ func TestFeedbackService_GetFeedback_WithLineArt(t *testing.T) {
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
@@ -320,7 +320,7 @@ func TestFeedbackService_RequestFeedback_WithoutLineArt(t *testing.T) {
 	dataDir := t.TempDir()
 
 	// Pass nil extractor -- line art should be empty
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
 
 	// Create a valid PNG reference image file (content doesn't matter since extractor is nil)
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")

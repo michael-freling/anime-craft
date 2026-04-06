@@ -1,8 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import ScoreDisplay from "../components/feedback/ScoreDisplay";
-import CategoryBreakdown from "../components/feedback/CategoryBreakdown";
-import FeedbackComments from "../components/feedback/FeedbackComments";
+import FeedbackScores from "../components/feedback/FeedbackScores";
+import FeedbackDetails from "../components/feedback/FeedbackDetails";
 import SideBySideComparison from "../components/feedback/SideBySideComparison";
 import {
   RequestFeedback,
@@ -93,7 +92,7 @@ function FeedbackPage() {
     return (
       <div className="feedback-page" data-testid="feedback-page">
         <div className="feedback-loading" data-testid="feedback-loading">
-          Analyzing your drawing...
+          Generating AI feedback...
         </div>
       </div>
     );
@@ -113,21 +112,6 @@ function FeedbackPage() {
     <div className="feedback-page" data-testid="feedback-page">
       <h1>Drawing Feedback</h1>
 
-      <div className="feedback-top">
-        <ScoreDisplay score={feedback.overallScore} />
-        <CategoryBreakdown
-          proportionsScore={feedback.proportionsScore}
-          lineQualityScore={feedback.lineQualityScore}
-          colorAccuracyScore={feedback.colorAccuracyScore}
-        />
-      </div>
-
-      <FeedbackComments
-        summary={feedback.summary}
-        strengths={feedback.strengths}
-        improvements={feedback.improvements}
-      />
-
       {referenceImageUrl && drawingImageUrl && (
         <SideBySideComparison
           referenceImageUrl={referenceImageUrl}
@@ -135,6 +119,20 @@ function FeedbackPage() {
           lineArtUrl={feedback.referenceLineArt}
         />
       )}
+
+      <FeedbackScores
+        overallScore={feedback.overallScore}
+        proportionsScore={feedback.proportionsScore ?? undefined}
+        lineQualityScore={feedback.lineQualityScore ?? undefined}
+        accuracyScore={feedback.colorAccuracyScore ?? undefined}
+      />
+
+      <FeedbackDetails
+        summary={feedback.summary}
+        details={feedback.details}
+        strengths={feedback.strengths}
+        improvements={feedback.improvements}
+      />
 
       <button
         className="start-session-btn feedback-new-btn"

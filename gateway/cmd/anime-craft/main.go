@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/michael-freling/anime-craft/frontend"
 	"github.com/michael-freling/anime-craft/gateway/internal/ai"
 	"github.com/michael-freling/anime-craft/gateway/internal/bff"
+	"github.com/michael-freling/anime-craft/gateway/internal/inference"
 	"github.com/michael-freling/anime-craft/gateway/internal/repository"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -35,13 +38,41 @@ func main() {
 	aiClient := ai.NewMockFeedbackClient()
 	lineArtExtractor := initLineArtExtractor()
 
+	// Optionally connect to the Python inference service if configured.
+	// If INFERENCE_SERVICE_ADDR is set, the gRPC client is used for both
+	// line art extraction and feedback generation. The local ONNX extractor
+	// remains as fallback for line art.
+	var feedbackGenerator bff.FeedbackGenerator
+	var inferenceClient *inference.Client
+	if addr := os.Getenv("INFERENCE_SERVICE_ADDR"); addr != "" {
+		ctx := context.Background()
+		client, err := inference.New(ctx, addr)
+		if err != nil {
+			log.Printf("Warning: could not connect to inference service at %s: %v", addr, err)
+		} else {
+			// Wait for the service to be ready with a generous timeout.
+			// Model loading can take a while; don't block app startup forever.
+			if err := client.WaitReady(ctx, 120*time.Second); err != nil {
+				log.Printf("Warning: inference service at %s not ready: %v (continuing without it)", addr, err)
+				client.Close()
+			} else {
+				inferenceClient = client
+				feedbackGenerator = client
+				// If we have the inference client, also use it for line art
+				// extraction (overrides local ONNX).
+				lineArtExtractor = client
+				log.Printf("Inference service connected at %s", addr)
+			}
+		}
+	}
+
 	app := application.New(application.Options{
 		Name:        "anime-craft",
 		Description: "Anime drawing practice app with AI feedback",
 		Services: []application.Service{
 			application.NewService(bff.NewSessionService(sessionRepo)),
 			application.NewService(bff.NewDrawingService(drawingRepo, dataDir)),
-			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, lineArtExtractor)),
+			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, lineArtExtractor, feedbackGenerator)),
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),
@@ -66,6 +97,12 @@ func main() {
 	})
 
 	err = app.Run()
+
+	// Clean up inference client on shutdown.
+	if inferenceClient != nil {
+		inferenceClient.Close()
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
