@@ -4,7 +4,7 @@ import ReferenceImageViewer from '../../components/session/ReferenceImageViewer'
 
 const mockGetReference = vi.fn();
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   GetReference: (...args: any[]) => mockGetReference(...args),
 }));
 

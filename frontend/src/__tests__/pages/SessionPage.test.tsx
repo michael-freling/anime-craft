@@ -8,16 +8,16 @@ const mockGetReference = vi.fn();
 const mockSaveDrawing = vi.fn();
 const mockEndSession = vi.fn();
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   GetSession: (...args: any[]) => mockGetSession(...args),
   EndSession: (...args: any[]) => mockEndSession(...args),
 }));
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   GetReference: (...args: any[]) => mockGetReference(...args),
 }));
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
   SaveDrawing: (...args: any[]) => mockSaveDrawing(...args),
 }));
 

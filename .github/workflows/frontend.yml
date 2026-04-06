@@ -32,7 +32,7 @@ jobs:
         working-directory: .
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.11
-          wails3 generate bindings -clean=true -ts
+          wails3 generate bindings -clean=true -ts ./gateway/cmd/anime-craft
 
       - uses: actions/setup-node@v4
         with:
@@ -71,7 +71,7 @@ jobs:
         working-directory: .
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.11
-          wails3 generate bindings -clean=true -ts
+          wails3 generate bindings -clean=true -ts ./gateway/cmd/anime-craft
 
       - uses: actions/setup-node@v4
         with:

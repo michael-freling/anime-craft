@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GetReference } from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { GetReference } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 interface ReferenceImageViewerProps {
   referenceId: string;

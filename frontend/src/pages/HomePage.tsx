@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReferenceImagePicker from "../components/session/ReferenceImagePicker";
-import { StartSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
+import { StartSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 
 const EXERCISE_MODE = "line_work";
 
