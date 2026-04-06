@@ -54,7 +54,7 @@ func main() {
 			// Model loading can take a while; don't block app startup forever.
 			if err := client.WaitReady(ctx, 120*time.Second); err != nil {
 				log.Printf("Warning: inference service at %s not ready: %v (continuing without it)", addr, err)
-				client.Close()
+				_ = client.Close()
 			} else {
 				inferenceClient = client
 				feedbackGenerator = client
@@ -100,7 +100,7 @@ func main() {
 
 	// Clean up inference client on shutdown.
 	if inferenceClient != nil {
-		inferenceClient.Close()
+		_ = inferenceClient.Close()
 	}
 
 	if err != nil {
