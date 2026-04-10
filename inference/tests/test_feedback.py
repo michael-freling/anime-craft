@@ -7,7 +7,6 @@ import pytest
 from animecraft_inference.config import Config
 from animecraft_inference.feedback.generator import (
     FeedbackGenerator,
-    FeedbackResult,
     parse_feedback_json,
 )
 from animecraft_inference.feedback.prompt import (

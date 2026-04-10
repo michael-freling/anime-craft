@@ -19,7 +19,6 @@ import grpc
 from animecraft_inference.config import Config, load_config
 from animecraft_inference.feedback.generator import (
     FeedbackGenerator,
-    FeedbackResult,
     parse_feedback_json,
 )
 from animecraft_inference.lineart.extractor import LineArtExtractor
@@ -195,8 +194,6 @@ def serve(config: Config) -> None:
     server.add_insecure_port(listen_addr)
 
     # Graceful shutdown on SIGTERM and SIGINT
-    shutdown_event = None
-
     def _handle_signal(signum: int, _frame: object) -> None:
         sig_name = signal.Signals(signum).name
         logger.info("Received %s, initiating graceful shutdown...", sig_name)
