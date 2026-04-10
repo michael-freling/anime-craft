@@ -6,11 +6,13 @@ on:
     paths:
       - "inference/**"
       - "proto/**"
+      - ".github/workflows/inference.yml"
   pull_request:
     branches: [main]
     paths:
       - "inference/**"
       - "proto/**"
+      - ".github/workflows/inference.yml"
 
 jobs:
   lint:
