@@ -1,0 +1,67 @@
+name: Inference
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "inference/**"
+      - "proto/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "inference/**"
+      - "proto/**"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: inference
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Lint with Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          src: inference/
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: inference
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PDM
+        run: pip install pdm
+
+      - name: Cache PDM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            inference/.venv
+            ~/.cache/pip
+          key: pdm-${{ runner.os }}-py3.12-${{ hashFiles('inference/pdm.lock') }}
+          restore-keys: |
+            pdm-${{ runner.os }}-py3.12-
+
+      - name: Install dependencies
+        run: pdm install
+
+      - name: Generate protobuf stubs
+        run: pdm run protoc
+
+      - name: Test
+        run: pdm run test
