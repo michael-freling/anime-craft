@@ -147,7 +147,7 @@ class FeedbackGenerator:
         dtype = torch.float16 if device == "cuda" else torch.float32
         self._model = AutoModelForImageTextToText.from_pretrained(
             model_id,
-            torch_dtype=dtype,
+            dtype=dtype,
             device_map=device if device == "cuda" else None,
             cache_dir=cache_dir,
         )
