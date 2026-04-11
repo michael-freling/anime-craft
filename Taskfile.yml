@@ -128,6 +128,18 @@ tasks:
     cmds:
       - pdm run serve
 
+  run:wsl:
+    desc: Run the staged Windows exe from WSL with env vars set
+    vars:
+      WIN_DEV_DIR: /mnt/c/temp/anime-craft-dev
+      VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+      INFERENCE_PORT: 50051
+    cmds:
+      - cmd: >-
+          FRONTEND_DEVSERVER_URL=http://localhost:{{.VITE_PORT}}
+          INFERENCE_SERVICE_ADDR=localhost:{{.INFERENCE_PORT}}
+          {{.WIN_DEV_DIR}}/anime-craft.exe
+
   dev:wsl:
     summary: Cross-compile Windows exe and start Vite dev server for WSL→Windows development
     deps:
@@ -155,11 +167,9 @@ tasks:
       - |
         echo ""
         echo "Build complete. Inference service starting on port {{.INFERENCE_PORT}}."
+        echo "Starting Vite dev server and app..."
         echo ""
-        echo "Run from Windows PowerShell:"
-        echo '  $env:FRONTEND_DEVSERVER_URL="http://localhost:{{.VITE_PORT}}"'
-        echo '  $env:INFERENCE_SERVICE_ADDR="localhost:{{.INFERENCE_PORT}}"'
-        echo '  & "C:\temp\anime-craft-dev\anime-craft.exe"'
-        echo ""
-        echo "Starting Vite dev server on port {{.VITE_PORT}}..."
-      - cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}}
+      # Start Vite in the background, then launch the exe from WSL.
+      - cmd: cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}} &
+      - sleep 3
+      - task: run:wsl
