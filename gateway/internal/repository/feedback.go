@@ -58,6 +58,35 @@ func (r *FeedbackRepository) Create(feedback model.Feedback) error {
 	return nil
 }
 
+func (r *FeedbackRepository) Update(feedback model.Feedback) error {
+	strengths, err := json.Marshal(feedback.Strengths)
+	if err != nil {
+		return fmt.Errorf("marshal strengths: %w", err)
+	}
+	improvements, err := json.Marshal(feedback.Improvements)
+	if err != nil {
+		return fmt.Errorf("marshal improvements: %w", err)
+	}
+
+	_, err = r.db.Exec(
+		`UPDATE feedback SET overall_score = ?, proportions_score = ?, line_quality_score = ?,
+			color_accuracy_score = ?, accuracy_score = ?, summary = ?, details = ?,
+			strengths = ?, improvements = ? WHERE id = ?`,
+		feedback.OverallScore,
+		intPtrToValue(feedback.ProportionsScore),
+		intPtrToValue(feedback.LineQualityScore),
+		intPtrToValue(feedback.ColorAccuracyScore),
+		intPtrToValue(feedback.AccuracyScore),
+		feedback.Summary, feedback.Details,
+		string(strengths), string(improvements),
+		feedback.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update feedback: %w", err)
+	}
+	return nil
+}
+
 func (r *FeedbackRepository) GetBySessionID(sessionID string) (model.Feedback, error) {
 	var f model.Feedback
 	var strengthsJSON, improvementsJSON string

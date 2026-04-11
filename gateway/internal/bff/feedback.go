@@ -48,9 +48,12 @@ func NewFeedbackService(
 }
 
 func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, error) {
-	// Check if feedback already exists for this session
+	// Check if feedback already exists for this session and has actual content.
+	// Feedback with no scores and no summary is treated as incomplete (e.g. from
+	// an older version of the code) and will be regenerated.
 	existing, err := s.repo.GetBySessionID(sessionID)
-	if err == nil {
+	hasContent := err == nil && (existing.OverallScore > 0 || existing.Summary != "")
+	if hasContent {
 		// ReferenceLineArt is transient (not in DB), so re-populate it.
 		s.populateLineArtForSession(&existing, sessionID)
 		return existing, nil
@@ -169,7 +172,14 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 		}
 	}
 
-	if err := s.repo.Create(feedback); err != nil {
+	// If incomplete feedback exists from a prior run, update it; otherwise create new.
+	if existing.ID != "" {
+		feedback.ID = existing.ID
+		if err := s.repo.Update(feedback); err != nil {
+			slog.Error("failed to update feedback", "method", "RequestFeedback", "sessionID", sessionID, "error", err)
+			return model.Feedback{}, fmt.Errorf("update feedback: %w", err)
+		}
+	} else if err := s.repo.Create(feedback); err != nil {
 		// Handle race condition: another concurrent call may have inserted feedback
 		// for this session between our existence check and this insert.
 		existing, getErr := s.repo.GetBySessionID(sessionID)
