@@ -528,45 +528,73 @@ body {
   color: #f44336;
 }
 
-.feedback-top {
-  display: flex;
-  gap: 2rem;
+/* Feedback scores */
+.feedback-scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
   margin-bottom: 2rem;
-  align-items: flex-start;
 }
 
-/* Score display */
-.score-display {
-  position: relative;
+.feedback-scores-analyzing {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #a0a0b8;
+  font-size: 1rem;
+  padding: 1.5rem 0;
+}
+
+.score-bar {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  min-width: 140px;
+  gap: 0.35rem;
 }
 
-.score-ring {
-  width: 120px;
-  height: 120px;
+.score-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
-.score-value {
-  position: absolute;
-  top: 40px;
-  font-size: 2rem;
-  font-weight: 700;
+.score-bar-label {
+  font-size: 0.85rem;
+  color: #e0e0e0;
 }
 
-.score-label {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: #a0a0b8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.score-bar-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e0e0e0;
 }
 
-/* Category breakdown */
-.category-breakdown {
-  flex: 1;
+.score-bar-track {
+  height: 10px;
+  background: #2a2a4a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.6s ease;
+}
+
+.score-fill-green {
+  background-color: #4caf50;
+}
+
+.score-fill-yellow {
+  background-color: #ff9800;
+}
+
+.score-fill-red {
+  background-color: #f44336;
+}
+
+/* Feedback details */
+.feedback-details {
+  margin-bottom: 2rem;
 }
 
 .feedback-section-title {
@@ -577,46 +605,6 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.category-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.category-label {
-  width: 110px;
-  font-size: 0.85rem;
-  color: #e0e0e0;
-}
-
-.category-bar-track {
-  flex: 1;
-  height: 10px;
-  background: #2a2a4a;
-  border-radius: 5px;
-  overflow: hidden;
-}
-
-.category-bar-fill {
-  height: 100%;
-  border-radius: 5px;
-  transition: width 0.6s ease;
-}
-
-.category-score {
-  width: 30px;
-  text-align: right;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-/* Feedback comments */
-.feedback-comments {
-  margin-bottom: 2rem;
-}
-
 .feedback-summary {
   margin-bottom: 1.5rem;
 }
@@ -624,10 +612,24 @@ body {
 .feedback-summary p {
   color: #c0c0d0;
   line-height: 1.6;
+  font-size: 1rem;
 }
 
-.feedback-list-section {
+.feedback-strengths {
   margin-bottom: 1rem;
+}
+
+.feedback-improvements {
+  margin-bottom: 1rem;
+}
+
+.feedback-details-text {
+  margin-bottom: 1rem;
+}
+
+.feedback-details-text p {
+  color: #c0c0d0;
+  line-height: 1.6;
 }
 
 .feedback-list {

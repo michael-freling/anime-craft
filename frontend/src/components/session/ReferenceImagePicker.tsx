@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListReferences, AddReference } from "../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { ListReferences, AddReference } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 interface ReferenceImagePickerProps {
   selectedRef: string | null;

@@ -6,10 +6,10 @@ import DrawingCanvas from "../components/drawing/DrawingCanvas";
 import ToolBar from "../components/drawing/ToolBar";
 import SessionControls from "../components/session/SessionControls";
 import ReferenceImageViewer from "../components/session/ReferenceImageViewer";
-import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { SaveDrawing } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
-import { EndSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
+import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { SaveDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import { EndSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 function SessionPageInner() {
   const { id } = useParams<{ id: string }>();

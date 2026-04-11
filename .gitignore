@@ -1,5 +1,5 @@
 bin/
-anime-craft
+/anime-craft
 node_modules/
 dist/
 *.exe
@@ -10,3 +10,14 @@ frontend/bindings/
 .task
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+onnxruntime/
+
+# Python / inference
+inference/models/
+inference/.venv/
+inference/src/animecraft_inference/generated/inference_pb2.py
+inference/src/animecraft_inference/generated/inference_pb2_grpc.py
+__pycache__/
+*.pyc
+.pdm-python
+*.egg-info/

@@ -1,0 +1,38 @@
+[project]
+name = "animecraft-inference"
+version = "0.1.0"
+description = "gRPC inference service for Anime Craft"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "transformers>=4.40.0",
+    "Pillow>=11.0.0",
+    "numpy>=2.0.0",
+    "accelerate>=0.30.0",
+    "gdown>=5.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "grpcio-testing>=1.68.0",
+]
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.scripts]
+_.env = {PYTHONPATH = "src"}
+_protoc_gen = """python -m grpc_tools.protoc \
+    -I../proto \
+    --python_out=src/animecraft_inference/generated \
+    --grpc_python_out=src/animecraft_inference/generated \
+    ../proto/inference.proto"""
+_protoc_fix = "python -c \"import pathlib; f=pathlib.Path('src/animecraft_inference/generated/inference_pb2_grpc.py'); f.write_text(f.read_text().replace('import inference_pb2 as', 'from animecraft_inference.generated import inference_pb2 as'))\""
+protoc.composite = ["_protoc_gen", "_protoc_fix"]
+serve = "python -m animecraft_inference.server"
+test = "pytest tests/ -v"

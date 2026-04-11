@@ -1,16 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import ScoreDisplay from "../components/feedback/ScoreDisplay";
-import CategoryBreakdown from "../components/feedback/CategoryBreakdown";
-import FeedbackComments from "../components/feedback/FeedbackComments";
+import FeedbackScores from "../components/feedback/FeedbackScores";
+import FeedbackDetails from "../components/feedback/FeedbackDetails";
 import SideBySideComparison from "../components/feedback/SideBySideComparison";
-import {
-  RequestFeedback,
-  GetFeedback,
-} from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/feedbackservice.js";
-import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js";
-import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/internal/bff/drawingservice.js";
+import { RequestFeedback } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
+import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
+import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import { debugLog } from "../utils/debugLog";
 
 interface FeedbackData {
   overallScore: number;
@@ -21,6 +18,7 @@ interface FeedbackData {
   details: string;
   strengths: string[];
   improvements: string[];
+  referenceLineArt: string;
 }
 
 function FeedbackPage() {
@@ -38,14 +36,17 @@ function FeedbackPage() {
 
     async function loadFeedback() {
       try {
-        // Try to get existing feedback first
-        let fb;
-        try {
-          fb = await GetFeedback(id!);
-        } catch {
-          // No feedback yet, request it
-          fb = await RequestFeedback(id!);
-        }
+        debugLog("info", "FeedbackPage.loadFeedback", "requesting feedback", { sessionId: id });
+        // RequestFeedback returns cached feedback if it exists and has content,
+        // or generates new feedback otherwise.
+        const fb = await RequestFeedback(id!);
+
+        debugLog("info", "FeedbackPage.loadFeedback", "feedback received", {
+          overallScore: fb.overallScore,
+          hasScores: fb.overallScore > 0,
+          hasSummary: !!fb.summary,
+          hasLineArt: !!fb.referenceLineArt,
+        });
 
         if (cancelled) return;
 
@@ -58,6 +59,7 @@ function FeedbackPage() {
           details: fb.details,
           strengths: fb.strengths || [],
           improvements: fb.improvements || [],
+          referenceLineArt: fb.referenceLineArt || "",
         });
 
         // Load images for comparison
@@ -70,9 +72,16 @@ function FeedbackPage() {
         ]);
 
         if (cancelled) return;
+        debugLog("info", "FeedbackPage.loadFeedback", "images loaded", {
+          referenceFilePath: ref.filePath,
+          drawingFilePath: drawing.filePath,
+        });
         setReferenceImageUrl(ref.filePath);
         setDrawingImageUrl(drawing.filePath);
       } catch (e) {
+        debugLog("error", "FeedbackPage.loadFeedback", "failed to load feedback", {
+          error: e instanceof Error ? e.message : String(e),
+        });
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load feedback");
         }
@@ -91,7 +100,7 @@ function FeedbackPage() {
     return (
       <div className="feedback-page" data-testid="feedback-page">
         <div className="feedback-loading" data-testid="feedback-loading">
-          Analyzing your drawing...
+          Generating AI feedback...
         </div>
       </div>
     );
@@ -111,27 +120,27 @@ function FeedbackPage() {
     <div className="feedback-page" data-testid="feedback-page">
       <h1>Drawing Feedback</h1>
 
-      <div className="feedback-top">
-        <ScoreDisplay score={feedback.overallScore} />
-        <CategoryBreakdown
-          proportionsScore={feedback.proportionsScore}
-          lineQualityScore={feedback.lineQualityScore}
-          colorAccuracyScore={feedback.colorAccuracyScore}
-        />
-      </div>
-
-      <FeedbackComments
-        summary={feedback.summary}
-        strengths={feedback.strengths}
-        improvements={feedback.improvements}
-      />
-
       {referenceImageUrl && drawingImageUrl && (
         <SideBySideComparison
           referenceImageUrl={referenceImageUrl}
           drawingImageUrl={drawingImageUrl}
+          lineArtUrl={feedback.referenceLineArt}
         />
       )}
+
+      <FeedbackScores
+        overallScore={feedback.overallScore}
+        proportionsScore={feedback.proportionsScore ?? undefined}
+        lineQualityScore={feedback.lineQualityScore ?? undefined}
+        accuracyScore={feedback.colorAccuracyScore ?? undefined}
+      />
+
+      <FeedbackDetails
+        summary={feedback.summary}
+        details={feedback.details}
+        strengths={feedback.strengths}
+        improvements={feedback.improvements}
+      />
 
       <button
         className="start-session-btn feedback-new-btn"

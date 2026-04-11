@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package animecraft.inference;
+
+option go_package = "github.com/michael-freling/anime-craft/gateway/internal/inference/pb";
+
+service InferenceService {
+  // ExtractLineArt converts a reference image to grayscale line art.
+  rpc ExtractLineArt(ExtractLineArtRequest) returns (ExtractLineArtResponse);
+
+  // GenerateFeedback compares reference line art with a user's drawing
+  // and streams structured feedback token-by-token.
+  rpc GenerateFeedback(GenerateFeedbackRequest) returns (stream GenerateFeedbackResponse);
+
+  // HealthCheck reports whether the service and its models are loaded.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message ExtractLineArtRequest {
+  bytes image_data = 1;
+}
+
+message ExtractLineArtResponse {
+  bytes line_art_png = 1;
+}
+
+message GenerateFeedbackRequest {
+  bytes reference_line_art_png = 1;
+  bytes drawing_png = 2;
+  string exercise_mode = 3;
+}
+
+message GenerateFeedbackResponse {
+  oneof payload {
+    string text_chunk = 1;
+    FeedbackResult result = 2;
+  }
+}
+
+message FeedbackResult {
+  int32 overall_score = 1;
+  int32 proportions_score = 2;
+  int32 line_quality_score = 3;
+  int32 accuracy_score = 4;
+  string summary = 5;
+  string details = 6;
+  repeated string strengths = 7;
+  repeated string improvements = 8;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool line_art_ready = 1;
+  bool feedback_ready = 2;
+  string status_message = 3;
+}

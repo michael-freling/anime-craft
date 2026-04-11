@@ -6,7 +6,7 @@ import ReferenceImagePicker from '../../components/session/ReferenceImagePicker'
 const mockListReferences = vi.fn();
 const mockAddReference = vi.fn();
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   ListReferences: (...args: any[]) => mockListReferences(...args),
   AddReference: (...args: any[]) => mockAddReference(...args),
 }));
