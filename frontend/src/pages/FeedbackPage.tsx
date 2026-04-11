@@ -3,10 +3,7 @@ import { useEffect, useState } from "react";
 import FeedbackScores from "../components/feedback/FeedbackScores";
 import FeedbackDetails from "../components/feedback/FeedbackDetails";
 import SideBySideComparison from "../components/feedback/SideBySideComparison";
-import {
-  RequestFeedback,
-  GetFeedback,
-} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
+import { RequestFeedback } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
@@ -38,14 +35,9 @@ function FeedbackPage() {
 
     async function loadFeedback() {
       try {
-        // Try to get existing feedback first
-        let fb;
-        try {
-          fb = await GetFeedback(id!);
-        } catch {
-          // No feedback yet, request it
-          fb = await RequestFeedback(id!);
-        }
+        // RequestFeedback returns cached feedback if it exists and has content,
+        // or generates new feedback otherwise.
+        const fb = await RequestFeedback(id!);
 
         if (cancelled) return;
 

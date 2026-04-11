@@ -4,14 +4,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import FeedbackPage from '../../pages/FeedbackPage';
 
-const mockGetFeedback = vi.fn();
 const mockRequestFeedback = vi.fn();
 const mockGetSession = vi.fn();
 const mockGetReference = vi.fn();
 const mockGetDrawing = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js', () => ({
-  GetFeedback: (...args: any[]) => mockGetFeedback(...args),
   RequestFeedback: (...args: any[]) => mockRequestFeedback(...args),
 }));
 
@@ -41,7 +39,7 @@ function renderFeedbackPage() {
 describe('FeedbackPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetFeedback.mockResolvedValue({
+    mockRequestFeedback.mockResolvedValue({
       overallScore: 75,
       proportionsScore: 80,
       lineQualityScore: 70,
@@ -67,7 +65,7 @@ describe('FeedbackPage', () => {
   });
 
   it('shows loading state initially', () => {
-    mockGetFeedback.mockReturnValue(new Promise(() => {})); // never resolves
+    mockRequestFeedback.mockReturnValue(new Promise(() => {})); // never resolves
     renderFeedbackPage();
     expect(screen.getByText('Generating AI feedback...')).toBeInTheDocument();
   });
@@ -122,7 +120,7 @@ describe('FeedbackPage', () => {
   });
 
   it('handles missing/zero scores gracefully', async () => {
-    mockGetFeedback.mockResolvedValue({
+    mockRequestFeedback.mockResolvedValue({
       overallScore: 0,
       proportionsScore: null,
       lineQualityScore: null,
@@ -146,7 +144,7 @@ describe('FeedbackPage', () => {
   });
 
   it('handles partially missing scores', async () => {
-    mockGetFeedback.mockResolvedValue({
+    mockRequestFeedback.mockResolvedValue({
       overallScore: 75,
       proportionsScore: null,
       lineQualityScore: null,
@@ -185,7 +183,6 @@ describe('FeedbackPage', () => {
   });
 
   it('shows error state when feedback loading fails', async () => {
-    mockGetFeedback.mockRejectedValue(new Error('No feedback'));
     mockRequestFeedback.mockRejectedValue(new Error('Service error'));
     renderFeedbackPage();
 
@@ -195,7 +192,7 @@ describe('FeedbackPage', () => {
   });
 
   it('renders line art panel when referenceLineArt is provided', async () => {
-    mockGetFeedback.mockResolvedValue({
+    mockRequestFeedback.mockResolvedValue({
       overallScore: 75,
       proportionsScore: 80,
       lineQualityScore: 70,
