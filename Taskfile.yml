@@ -86,6 +86,22 @@ tasks:
       - mkdir -p /tmp/gocoverdir
       - dbus-run-session -- xvfb-run -a env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge python3 -m pytest e2e/ -v --tb=short
 
+  e2e:playwright:
+    desc: Run Playwright e2e tests (requires dev server running)
+    dir: e2e
+    cmds:
+      - npx playwright test
+
+  e2e:debug:
+    desc: Run debug smoke test and capture diagnostics to /tmp/anime-craft-e2e/
+    dir: e2e
+    cmds:
+      - npx playwright test tests/debug-smoke.spec.ts
+      - echo "Diagnostics saved to /tmp/anime-craft-e2e/"
+      - echo "  feedback-page.png  - screenshot of the feedback page"
+      - echo "  console.log        - browser console output"
+      - echo "  backend-debug.log  - backend structured log"
+
   inference:install:
     desc: Install Python inference service dependencies
     dir: inference
