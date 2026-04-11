@@ -25,6 +25,12 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
   GetDrawing: (...args: any[]) => mockGetDrawing(...args),
 }));
 
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/logservice.js', () => ({
+  Log: vi.fn(),
+  GetLogPath: vi.fn(),
+  WriteBackendLog: vi.fn(),
+}));
+
 function renderFeedbackPage() {
   return render(
     <MemoryRouter initialEntries={['/session/session-001/feedback']}>

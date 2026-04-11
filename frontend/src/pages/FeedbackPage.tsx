@@ -7,6 +7,7 @@ import { RequestFeedback } from "../../bindings/github.com/michael-freling/anime
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import { debugLog } from "../utils/debugLog";
 
 interface FeedbackData {
   overallScore: number;
@@ -35,9 +36,17 @@ function FeedbackPage() {
 
     async function loadFeedback() {
       try {
+        debugLog("info", "FeedbackPage.loadFeedback", "requesting feedback", { sessionId: id });
         // RequestFeedback returns cached feedback if it exists and has content,
         // or generates new feedback otherwise.
         const fb = await RequestFeedback(id!);
+
+        debugLog("info", "FeedbackPage.loadFeedback", "feedback received", {
+          overallScore: fb.overallScore,
+          hasScores: fb.overallScore > 0,
+          hasSummary: !!fb.summary,
+          hasLineArt: !!fb.referenceLineArt,
+        });
 
         if (cancelled) return;
 
@@ -63,9 +72,16 @@ function FeedbackPage() {
         ]);
 
         if (cancelled) return;
+        debugLog("info", "FeedbackPage.loadFeedback", "images loaded", {
+          referenceFilePath: ref.filePath,
+          drawingFilePath: drawing.filePath,
+        });
         setReferenceImageUrl(ref.filePath);
         setDrawingImageUrl(drawing.filePath);
       } catch (e) {
+        debugLog("error", "FeedbackPage.loadFeedback", "failed to load feedback", {
+          error: e instanceof Error ? e.message : String(e),
+        });
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load feedback");
         }

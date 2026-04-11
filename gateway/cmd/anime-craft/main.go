@@ -66,6 +66,8 @@ func main() {
 		}
 	}
 
+	logService := bff.NewLogService(dataDir)
+
 	app := application.New(application.Options{
 		Name:        "anime-craft",
 		Description: "Anime drawing practice app with AI feedback",
@@ -76,6 +78,7 @@ func main() {
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),
+			application.NewService(logService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(frontend.Assets),

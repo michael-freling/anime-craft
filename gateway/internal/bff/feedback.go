@@ -54,10 +54,12 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	existing, err := s.repo.GetBySessionID(sessionID)
 	hasContent := err == nil && (existing.OverallScore > 0 || existing.Summary != "")
 	if hasContent {
+		slog.Info("returning cached feedback", "method", "RequestFeedback", "sessionID", sessionID, "overallScore", existing.OverallScore, "hasSummary", existing.Summary != "")
 		// ReferenceLineArt is transient (not in DB), so re-populate it.
 		s.populateLineArtForSession(&existing, sessionID)
 		return existing, nil
 	}
+	slog.Info("generating new feedback", "method", "RequestFeedback", "sessionID", sessionID)
 
 	session, err := s.sessionRepo.Get(sessionID)
 	if err != nil {
@@ -192,6 +194,14 @@ func (s *FeedbackService) RequestFeedback(sessionID string) (model.Feedback, err
 	}
 
 	s.populateLineArt(&feedback, refData)
+
+	slog.Info("feedback ready", "method", "RequestFeedback", "sessionID", sessionID,
+		"overallScore", feedback.OverallScore,
+		"hasSummary", feedback.Summary != "",
+		"hasLineArt", feedback.ReferenceLineArt != "",
+		"hasProportionsScore", feedback.ProportionsScore != nil,
+		"hasLineQualityScore", feedback.LineQualityScore != nil,
+	)
 
 	return feedback, nil
 }
