@@ -4,16 +4,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ReferenceImagePicker from '../../components/session/ReferenceImagePicker';
 
 const mockListReferences = vi.fn();
-const mockAddReference = vi.fn();
+const mockAddReferenceByFilePath = vi.fn();
+const mockGetReferenceImageData = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   ListReferences: (...args: any[]) => mockListReferences(...args),
-  AddReference: (...args: any[]) => mockAddReference(...args),
+  AddReferenceByFilePath: (...args: any[]) => mockAddReferenceByFilePath(...args),
+  GetReferenceImageData: (...args: any[]) => mockGetReferenceImageData(...args),
 }));
+
+const FACE_DATA_URL = 'data:image/png;base64,ZmFjZQ==';
+const BODY_DATA_URL = 'data:image/png;base64,Ym9keQ==';
 
 describe('ReferenceImagePicker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetReferenceImageData.mockImplementation((id: string) =>
+      Promise.resolve(id === 'ref-001' ? FACE_DATA_URL : BODY_DATA_URL),
+    );
     mockListReferences.mockResolvedValue([
       {
         id: 'ref-001',
@@ -132,100 +140,46 @@ describe('ReferenceImagePicker', () => {
     expect(screen.getByText('+')).toBeInTheDocument();
   });
 
-  it('uploads a reference image when file is selected', async () => {
-    const uploadedRef = {
-      id: 'ref-uploaded',
-      title: 'my-drawing',
-      filePath: 'references/uploads/my-drawing.png',
-      exerciseMode: 'line_work',
-      difficulty: 'beginner',
-    };
-
-    mockAddReference.mockResolvedValue(uploadedRef);
-
-    // After upload, the refreshed list includes the new image
-    let callCount = 0;
-    mockListReferences.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve([
-          {
-            id: 'ref-001',
-            title: 'Simple Face',
-            filePath: 'references/face.png',
-            exerciseMode: 'line_work',
-            difficulty: 'beginner',
-          },
-        ]);
-      }
-      // After upload, return list with the new image included
-      return Promise.resolve([
-        {
-          id: 'ref-001',
-          title: 'Simple Face',
-          filePath: 'references/face.png',
-          exerciseMode: 'line_work',
-          difficulty: 'beginner',
-        },
-        uploadedRef,
-      ]);
-    });
-
+  it('shows each reference image as a preview thumbnail', async () => {
     render(
       <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
     );
 
-    await waitFor(() => {
-      expect(screen.getByText('Simple Face')).toBeInTheDocument();
-    });
-
-    // Create a mock file
-    const file = new File(['fake-image-data'], 'my-drawing.png', {
-      type: 'image/png',
-    });
-
-    // Simulate file selection
-    const fileInput = screen.getByTestId('reference-file-input') as HTMLInputElement;
-    await userEvent.upload(fileInput, file);
-
-    // Wait for AddReference to be called
-    await waitFor(() => {
-      expect(mockAddReference).toHaveBeenCalledWith(
-        'my-drawing',
-        'beginner',
-        expect.any(String)
-      );
-    });
-
-    // After upload, the list should be refreshed and show the new image
-    await waitFor(() => {
-      expect(screen.getByText('my-drawing')).toBeInTheDocument();
-    });
+    const thumbnail = await screen.findByTestId('reference-thumbnail-ref-001');
+    expect(thumbnail).toHaveAttribute('src', FACE_DATA_URL);
+    expect(thumbnail).toHaveAttribute('alt', 'Simple Face');
+    expect(screen.getByTestId('reference-thumbnail-ref-002')).toHaveAttribute(
+      'src',
+      BODY_DATA_URL,
+    );
+    expect(mockGetReferenceImageData).toHaveBeenCalledWith('ref-001');
+    expect(mockGetReferenceImageData).toHaveBeenCalledWith('ref-002');
+    expect(screen.queryByText('IMG')).not.toBeInTheDocument();
   });
 
-  it('shows error when upload fails', async () => {
+  it('keeps the placeholder when an image fails to load', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockAddReference.mockRejectedValue(new Error('Upload failed: file too large'));
+    mockGetReferenceImageData.mockImplementation((id: string) =>
+      id === 'ref-001'
+        ? Promise.reject(new Error('read image file'))
+        : Promise.resolve(BODY_DATA_URL),
+    );
 
     render(
       <ReferenceImagePicker selectedRef={null} onSelectRef={vi.fn()} />
     );
 
+    // The healthy reference still renders its preview...
     await waitFor(() => {
-      expect(screen.getByTestId('reference-card-add')).toBeInTheDocument();
+      expect(screen.getByTestId('reference-thumbnail-ref-002')).toBeInTheDocument();
     });
-
-    const file = new File(['fake-image-data'], 'big-image.png', {
-      type: 'image/png',
-    });
-
-    const fileInput = screen.getByTestId('reference-file-input') as HTMLInputElement;
-    await userEvent.upload(fileInput, file);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('reference-picker-error')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Upload failed: file too large')).toBeInTheDocument();
+    // ...while the broken one falls back to the placeholder.
+    expect(screen.queryByTestId('reference-thumbnail-ref-001')).not.toBeInTheDocument();
+    expect(screen.getByText('IMG')).toBeInTheDocument();
+    expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
+
+  // Note: upload tests (AddReferenceByFilePath) rely on Wails native file dialog
+  // which cannot be tested in jsdom. These are covered by e2e tests.
 });

@@ -29,6 +29,10 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
       tags: 'body',
     },
   ]),
+  AddReferenceByFilePath: vi.fn().mockResolvedValue({}),
+  GetReferenceImageData: vi
+    .fn()
+    .mockResolvedValue('data:image/png;base64,aW1n'),
 }));
 
 describe('HomePage', () => {

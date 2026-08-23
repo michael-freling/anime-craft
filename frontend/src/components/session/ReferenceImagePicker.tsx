@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListReferences, AddReference } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
+import {
+  ListReferences,
+  AddReferenceByFilePath,
+  GetReferenceImageData,
+} from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 interface ReferenceImagePickerProps {
   selectedRef: string | null;
@@ -13,9 +17,10 @@ function ReferenceImagePicker({
   onSelectRef,
 }: ReferenceImagePickerProps) {
   const [images, setImages] = useState<any[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const requestedThumbnails = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadReferences = useCallback(() => {
     setError(null);
@@ -53,21 +58,81 @@ function ReferenceImagePicker({
     };
   }, []);
 
-  const handleAddClick = () => {
-    fileInputRef.current?.click();
-  };
+  // Load the image data for each reference so the cards show a preview instead
+  // of a placeholder. Each image is fetched once; the ref keeps a re-render
+  // from re-requesting images that are already loaded.
+  useEffect(() => {
+    let cancelled = false;
+    const missing = images.filter(
+      (img) => img?.id && !requestedThumbnails.current.has(img.id),
+    );
+    if (missing.length === 0) {
+      return;
+    }
+    missing.forEach((img) => requestedThumbnails.current.add(img.id));
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    Promise.all(
+      missing.map((img) =>
+        GetReferenceImageData(img.id)
+          .then((dataUrl: string) => [img.id, dataUrl] as const)
+          .catch((e: unknown) => {
+            // One unreadable image shouldn't blank out the whole picker: keep
+            // its placeholder and allow a retry on the next load.
+            console.error(
+              "ReferenceImagePicker: GetReferenceImageData failed:",
+              e,
+            );
+            requestedThumbnails.current.delete(img.id);
+            return null;
+          }),
+      ),
+    ).then((results) => {
+      if (cancelled) {
+        return;
+      }
+      const loaded = results.filter(
+        (result): result is readonly [string, string] => result !== null,
+      );
+      if (loaded.length === 0) {
+        return;
+      }
+      setThumbnails((prev) => ({ ...prev, ...Object.fromEntries(loaded) }));
+    });
 
-    setUploading(true);
-    setError(null);
+    return () => {
+      cancelled = true;
+    };
+  }, [images]);
 
+  const handleAddClick = async () => {
     try {
-      const base64Data = await readFileAsBase64(file);
-      const title = file.name.replace(/\.[^/.]+$/, "");
-      await AddReference(title, "beginner", base64Data);
+      // Dynamically import Dialogs to avoid the @wailsio/runtime index.js
+      // side effect (System.invoke("wails:runtime:ready")) at module load time,
+      // which causes initialization race conditions in dev mode.
+      const { Dialogs } = await import("@wailsio/runtime");
+
+      // Use Wails' native file dialog instead of HTML file input.
+      // This returns the file path as a string, avoiding base64 in URL params.
+      const filePath = await Dialogs.OpenFile({
+        Title: "Select Reference Image",
+        Filters: [
+          {
+            DisplayName: "Images",
+            Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp",
+          },
+        ],
+      });
+
+      if (!filePath) return; // User cancelled
+
+      setUploading(true);
+      setError(null);
+
+      // Extract title from filename
+      const fileName = filePath.split(/[/\\]/).pop() || "untitled";
+      const title = fileName.replace(/\.[^/.]+$/, "");
+
+      await AddReferenceByFilePath(title, "beginner", filePath);
       await loadReferences();
     } catch (err) {
       const message =
@@ -76,10 +141,6 @@ function ReferenceImagePicker({
       setError(message);
     } finally {
       setUploading(false);
-      // Reset file input so the same file can be selected again
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
   };
 
@@ -91,14 +152,6 @@ function ReferenceImagePicker({
       role="button"
       aria-label="Add Image"
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        style={{ display: "none" }}
-        data-testid="reference-file-input"
-      />
       <div className="reference-card-add-content">
         <span className="reference-card-add-icon">+</span>
         <span className="reference-card-add-label">
@@ -126,7 +179,16 @@ function ReferenceImagePicker({
             data-testid={`reference-card-${img.id}`}
           >
             <div className="reference-thumbnail">
-              <span className="thumbnail-placeholder">IMG</span>
+              {thumbnails[img.id] ? (
+                <img
+                  className="reference-thumbnail-img"
+                  src={thumbnails[img.id]}
+                  alt={img.title}
+                  data-testid={`reference-thumbnail-${img.id}`}
+                />
+              ) : (
+                <span className="thumbnail-placeholder">IMG</span>
+              )}
             </div>
             <div className="reference-info">
               <span className="reference-title">{img.title}</span>
@@ -139,22 +201,6 @@ function ReferenceImagePicker({
       </div>
     </div>
   );
-}
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data URL prefix (e.g. "data:image/png;base64,")
-      const base64 = result.split(",")[1] ?? result;
-      resolve(base64);
-    };
-    reader.onerror = () => {
-      reject(new Error("Failed to read file"));
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 export default ReferenceImagePicker;

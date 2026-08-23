@@ -183,11 +183,19 @@ body {
 }
 
 .reference-thumbnail {
-  height: 80px;
+  height: 110px;
   background: #0f3460;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.reference-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  /* contain, not cover: the whole reference has to be recognisable at a glance */
+  object-fit: contain;
+  display: block;
 }
 
 .thumbnail-placeholder {
