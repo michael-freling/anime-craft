@@ -59,7 +59,21 @@ export const mockGetReference = vi.fn().mockResolvedValue({
   filePath: 'references/face.png',
 });
 
+export const mockGetReferenceImageData = vi.fn().mockResolvedValue(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+);
+
+export const mockAddReferenceByFilePath = vi.fn().mockResolvedValue({
+  id: 'ref-new',
+  title: 'Uploaded Image',
+  filePath: 'references/ref-new.png',
+});
+
 export const mockGetDrawing = vi.fn().mockResolvedValue({
   id: 'drawing-001',
   filePath: 'drawings/drawing-001.png',
 });
+
+export const mockGetDrawingImageData = vi.fn().mockResolvedValue(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+);

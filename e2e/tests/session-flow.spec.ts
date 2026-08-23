@@ -51,15 +51,15 @@ test("complete session flow: pick reference, draw, submit, view feedback", async
   await expect(page.getByTestId("feedback-summary")).toBeVisible({
     timeout: 15000,
   });
-  await expect(page.getByTestId("overall-score")).toBeVisible();
+  await expect(page.getByTestId("score-bar-overall")).toBeVisible();
 
-  // 11. The mock AI client returns overallScore 72; verify the score is a number
-  const scoreText = await page.getByTestId("overall-score").textContent();
+  // 11. Verify the overall score bar contains a numeric value
+  const scoreText = await page.getByTestId("score-bar-overall").textContent();
   expect(scoreText).toBeTruthy();
   expect(scoreText).toMatch(/\d+/);
 
-  // 12. Verify category breakdown, strengths, and improvements are displayed
-  await expect(page.getByTestId("category-breakdown")).toBeVisible();
+  // 12. Verify scores container, strengths, and improvements are displayed
+  await expect(page.getByTestId("feedback-scores")).toBeVisible();
   await expect(page.getByTestId("feedback-strengths")).toBeVisible();
   await expect(page.getByTestId("feedback-improvements")).toBeVisible();
 

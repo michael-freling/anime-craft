@@ -32,20 +32,169 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  e2e:
+    desc: Run E2E tests with AT-SPI
+    cmds:
+      - go build -cover -o anime-craft ./gateway/cmd/anime-craft
+      - mkdir -p /tmp/gocoverdir
+      - dbus-run-session -- xvfb-run -a env GOCOVERDIR=/tmp/gocoverdir GTK_MODULES=gail:atk-bridge python3 -m pytest e2e/ -v --tb=short
+
+  e2e:playwright:
+    desc: Run Playwright e2e tests (requires dev server running)
+    dir: e2e
+    cmds:
+      - npx playwright test
+
+  e2e:debug:
+    desc: Run debug smoke test and capture diagnostics to /tmp/anime-craft-e2e/
+    dir: e2e
+    cmds:
+      - npx playwright test tests/debug-smoke.spec.ts
+      - echo "Diagnostics saved to /tmp/anime-craft-e2e/"
+      - echo "  feedback-page.png  - screenshot of the feedback page"
+      - echo "  console.log        - browser console output"
+      - echo "  backend-debug.log  - backend structured log"
+
+  inference:install:
+    desc: Install Python inference service dependencies
+    dir: inference
+    status:
+      - test -d .venv
+    cmds:
+      - pdm install
+
+  inference:protoc:
+    desc: Generate protobuf code for Python
+    deps:
+      - inference:install
+    dir: inference
+    cmds:
+      - mkdir -p src/animecraft_inference/generated
+      - pdm run protoc
+
+  inference:serve:
+    desc: Start the Python inference service
+    dir: inference
+    deps:
+      - inference:install
+      - inference:protoc
+    cmds:
+      - pdm run serve
+
+  inference:serve:wsl:
+    desc: Start the inference service so a Windows-side app can reach it
+    summary: |
+      Binds 0.0.0.0 instead of localhost. WSL2's localhost relay forwards
+      Windows connections to the VM's interface, so a service bound only to
+      127.0.0.1 inside WSL is refused when the Windows exe dials
+      localhost:50051.
+    dir: inference
+    deps:
+      - inference:install
+      - inference:protoc
+    vars:
+      INFERENCE_PORT: 50051
+    cmds:
+      - pdm run serve --host 0.0.0.0 --port {{.INFERENCE_PORT}}
+
+  build:wsl:
+    desc: Cross-compile the Windows exe from WSL into bin/anime-craft.exe
+    cmds:
+      - task: windows:build
+        vars:
+          ARCH: '{{.ARCH | default "amd64"}}'
+          PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  build:wsl:dev:
+    desc: Cross-compile a debug Windows exe from WSL (devtools, console log output)
+    cmds:
+      - task: build:wsl
+        vars:
+          PRODUCTION: "false"
+
+  build:wsl:prod:
+    desc: Cross-compile a production Windows exe from WSL (minified, no console window)
+    cmds:
+      - task: build:wsl
+        vars:
+          PRODUCTION: "true"
+
+  build:wsl:desktop:
+    desc: Build the Windows exe in WSL and copy it to the Windows desktop
+    vars:
+      # Ask Windows where the desktop is, so this works for any user and copes
+      # with a OneDrive-redirected Desktop.
+      WINDOWS_DESKTOP_DIR:
+        sh: |
+          wslpath "$(powershell.exe -NoProfile -Command "[Environment]::GetFolderPath('Desktop')" 2>/dev/null | tr -d '\r')" 2>/dev/null || true
+      DEST_DIR: '{{.DESKTOP_DIR | default .WINDOWS_DESKTOP_DIR}}'
+    cmds:
+      - cmd: |
+          if [ -z '{{.DEST_DIR}}' ]; then
+            echo "Could not locate the Windows desktop. Run this from WSL, or pass DESKTOP_DIR=/mnt/c/Users/<user>/Desktop" >&2
+            exit 1
+          fi
+      - task: build:wsl
+        vars:
+          PRODUCTION: '{{.PRODUCTION | default "false"}}'
+      - cp {{.BIN_DIR}}/{{.APP_NAME}}.exe '{{.DEST_DIR}}/{{.APP_NAME}}.exe'
+      - cmd: echo "Copied {{.APP_NAME}}.exe to {{.DEST_DIR}}"
+        silent: true
+
+  build:wsl:desktop:dev:
+    desc: Build a debug Windows exe in WSL and copy it to the Windows desktop
+    cmds:
+      - task: build:wsl:desktop
+        vars:
+          PRODUCTION: "false"
+
+  build:wsl:desktop:prod:
+    desc: Build a production Windows exe in WSL and copy it to the Windows desktop
+    cmds:
+      - task: build:wsl:desktop
+        vars:
+          PRODUCTION: "true"
+
+  run:wsl:
+    desc: Run the staged Windows exe from WSL with env vars set
+    vars:
+      WIN_DEV_DIR: /mnt/c/temp/anime-craft-dev
+      WIN_DEV_DIR_WIN: 'C:\temp\anime-craft-dev'
+      VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+      INFERENCE_PORT: 50051
+    cmds:
+      - cmd: >-
+          cmd.exe /c "set FRONTEND_DEVSERVER_URL=http://localhost:{{.VITE_PORT}}&&
+          set INFERENCE_SERVICE_ADDR=localhost:{{.INFERENCE_PORT}}&&
+          {{.WIN_DEV_DIR_WIN}}\anime-craft.exe"
+
   dev:wsl:
     summary: Cross-compile Windows exe and start Vite dev server for WSL→Windows development
     deps:
       - common:install:frontend:deps
+      - inference:install
+      - inference:protoc
+    vars:
+      WIN_DEV_DIR: /mnt/c/temp/anime-craft-dev
+      INFERENCE_PORT: 50051
     silent: true
     cmds:
-      - wails3 generate bindings || true
-      - GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe .
+      - wails3 generate bindings ./gateway/cmd/anime-craft || true
+      - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe ./gateway/cmd/anime-craft
+      # Stage exe to a local Windows directory.
+      - mkdir -p {{.WIN_DEV_DIR}}
+      - cp anime-craft.exe {{.WIN_DEV_DIR}}/
+      # Kill any stale inference service processes before starting a new one.
+      - cmd: pkill -f 'animecraft_inference.server' || true
+      # Start the Python inference service in the background.
+      - cmd: cd inference && pdm run serve --host 0.0.0.0 --port {{.INFERENCE_PORT}} &
+        ignore_error: true
       - |
         echo ""
-        echo "Build complete. Run from Windows PowerShell:"
-        echo '  $env:FRONTEND_DEVSERVER_URL="http://localhost:{{.VITE_PORT}}"'
-        echo '  & "\\wsl.localhost\Ubuntu-24.04\home\michael\src\github.com\michael-freling\anime-craft\anime-craft.exe"'
+        echo "Build complete. Inference service starting on port {{.INFERENCE_PORT}}."
+        echo "Starting Vite dev server and app..."
         echo ""
-        echo "Starting Vite dev server on port {{.VITE_PORT}}..."
-      - cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}}
-
+      # Start Vite in the background, then launch the exe from WSL.
+      - cmd: cd frontend && npm run dev -- --host 0.0.0.0 --port {{.VITE_PORT}} &
+      - sleep 3
+      - task: run:wsl

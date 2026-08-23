@@ -1,0 +1,1 @@
+ALTER TABLE feedback ADD COLUMN accuracy_score INTEGER DEFAULT 0;

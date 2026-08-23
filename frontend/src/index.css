@@ -183,11 +183,19 @@ body {
 }
 
 .reference-thumbnail {
-  height: 80px;
+  height: 110px;
   background: #0f3460;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.reference-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  /* contain, not cover: the whole reference has to be recognisable at a glance */
+  object-fit: contain;
+  display: block;
 }
 
 .thumbnail-placeholder {
@@ -504,7 +512,7 @@ body {
 .feedback-page {
   flex: 1;
   overflow-y: auto;
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   width: 100%;
   padding: 0.75rem;
@@ -528,45 +536,73 @@ body {
   color: #f44336;
 }
 
-.feedback-top {
-  display: flex;
-  gap: 2rem;
+/* Feedback scores */
+.feedback-scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
   margin-bottom: 2rem;
-  align-items: flex-start;
 }
 
-/* Score display */
-.score-display {
-  position: relative;
+.feedback-scores-analyzing {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #a0a0b8;
+  font-size: 1rem;
+  padding: 1.5rem 0;
+}
+
+.score-bar {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  min-width: 140px;
+  gap: 0.35rem;
 }
 
-.score-ring {
-  width: 120px;
-  height: 120px;
+.score-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
-.score-value {
-  position: absolute;
-  top: 40px;
-  font-size: 2rem;
-  font-weight: 700;
+.score-bar-label {
+  font-size: 0.85rem;
+  color: #e0e0e0;
 }
 
-.score-label {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: #a0a0b8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.score-bar-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e0e0e0;
 }
 
-/* Category breakdown */
-.category-breakdown {
-  flex: 1;
+.score-bar-track {
+  height: 10px;
+  background: #2a2a4a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.6s ease;
+}
+
+.score-fill-green {
+  background-color: #4caf50;
+}
+
+.score-fill-yellow {
+  background-color: #ff9800;
+}
+
+.score-fill-red {
+  background-color: #f44336;
+}
+
+/* Feedback details */
+.feedback-details {
+  margin-bottom: 2rem;
 }
 
 .feedback-section-title {
@@ -577,46 +613,6 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.category-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.category-label {
-  width: 110px;
-  font-size: 0.85rem;
-  color: #e0e0e0;
-}
-
-.category-bar-track {
-  flex: 1;
-  height: 10px;
-  background: #2a2a4a;
-  border-radius: 5px;
-  overflow: hidden;
-}
-
-.category-bar-fill {
-  height: 100%;
-  border-radius: 5px;
-  transition: width 0.6s ease;
-}
-
-.category-score {
-  width: 30px;
-  text-align: right;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-/* Feedback comments */
-.feedback-comments {
-  margin-bottom: 2rem;
-}
-
 .feedback-summary {
   margin-bottom: 1.5rem;
 }
@@ -624,10 +620,24 @@ body {
 .feedback-summary p {
   color: #c0c0d0;
   line-height: 1.6;
+  font-size: 1rem;
 }
 
-.feedback-list-section {
+.feedback-strengths {
   margin-bottom: 1rem;
+}
+
+.feedback-improvements {
+  margin-bottom: 1rem;
+}
+
+.feedback-details-text {
+  margin-bottom: 1rem;
+}
+
+.feedback-details-text p {
+  color: #c0c0d0;
+  line-height: 1.6;
 }
 
 .feedback-list {
@@ -657,15 +667,30 @@ body {
   color: #ff9800;
 }
 
-/* Side by side comparison */
-.side-by-side {
+/* Side by side comparison — sectioned layout */
+.comparison-sections {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 24px;
   margin-bottom: 2rem;
+  max-width: 100%;
+}
+
+.comparison-section-title {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: #a0a0b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comparison-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
 .comparison-panel {
-  flex: 1;
   min-width: 0;
 }
 
@@ -677,12 +702,61 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.comparison-img {
+.comparison-panel .comparison-img {
   width: 100%;
-  border-radius: 8px;
+  border-radius: 4px;
   background: #16213e;
   object-fit: contain;
-  max-height: 300px;
+  cursor: pointer;
+  transition: outline 0.15s;
+}
+
+.comparison-details .comparison-img {
+  max-height: 400px;
+  object-fit: contain;
+}
+
+.comparison-panel .comparison-img:hover {
+  outline: 2px solid #a0a0b8;
+  outline-offset: 2px;
+}
+
+/* Image modal overlay */
+.image-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.image-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.image-modal-close:hover {
+  color: #e94560;
+}
+
+.image-modal-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
 }
 
 /* New session button at bottom of feedback */

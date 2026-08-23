@@ -6,11 +6,11 @@ import HomePage from '../../pages/HomePage';
 
 const mockStartSession = vi.fn();
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/sessionservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   StartSession: (...args: any[]) => mockStartSession(...args),
 }));
 
-vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/referenceservice.js', () => ({
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   ListReferences: vi.fn().mockResolvedValue([
     {
       id: 'ref-001',
@@ -29,6 +29,10 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/internal/bff/r
       tags: 'body',
     },
   ]),
+  AddReferenceByFilePath: vi.fn().mockResolvedValue({}),
+  GetReferenceImageData: vi
+    .fn()
+    .mockResolvedValue('data:image/png;base64,aW1n'),
 }));
 
 describe('HomePage', () => {
