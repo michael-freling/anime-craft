@@ -5,8 +5,8 @@ import FeedbackDetails from "../components/feedback/FeedbackDetails";
 import SideBySideComparison from "../components/feedback/SideBySideComparison";
 import { RequestFeedback } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
-import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
-import { GetDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import { GetReferenceImageData } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
+import { GetDrawingImageData } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
 import { debugLog } from "../utils/debugLog";
 
 interface FeedbackData {
@@ -19,6 +19,7 @@ interface FeedbackData {
   strengths: string[];
   improvements: string[];
   referenceLineArt: string;
+  comparisonHeatmap: string;
 }
 
 function FeedbackPage() {
@@ -60,24 +61,21 @@ function FeedbackPage() {
           strengths: fb.strengths || [],
           improvements: fb.improvements || [],
           referenceLineArt: fb.referenceLineArt || "",
+          comparisonHeatmap: fb.comparisonHeatmap || "",
         });
 
         // Load images for comparison
         const session = await GetSession(id!);
         if (cancelled) return;
 
-        const [ref, drawing] = await Promise.all([
-          GetReference(session.referenceImageId),
-          GetDrawing(id!),
+        const [refImageData, drawingImageData] = await Promise.all([
+          GetReferenceImageData(session.referenceImageId),
+          GetDrawingImageData(id!),
         ]);
 
         if (cancelled) return;
-        debugLog("info", "FeedbackPage.loadFeedback", "images loaded", {
-          referenceFilePath: ref.filePath,
-          drawingFilePath: drawing.filePath,
-        });
-        setReferenceImageUrl(ref.filePath);
-        setDrawingImageUrl(drawing.filePath);
+        setReferenceImageUrl(refImageData);
+        setDrawingImageUrl(drawingImageData);
       } catch (e) {
         debugLog("error", "FeedbackPage.loadFeedback", "failed to load feedback", {
           error: e instanceof Error ? e.message : String(e),
@@ -125,6 +123,7 @@ function FeedbackPage() {
           referenceImageUrl={referenceImageUrl}
           drawingImageUrl={drawingImageUrl}
           lineArtUrl={feedback.referenceLineArt}
+          comparisonHeatmapUrl={feedback.comparisonHeatmap}
         />
       )}
 

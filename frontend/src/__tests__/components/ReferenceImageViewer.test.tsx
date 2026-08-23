@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ReferenceImageViewer from '../../components/session/ReferenceImageViewer';
 
 const mockGetReference = vi.fn();
+const mockGetReferenceImageData = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   GetReference: (...args: any[]) => mockGetReference(...args),
+  GetReferenceImageData: (...args: any[]) => mockGetReferenceImageData(...args),
 }));
 
 describe('ReferenceImageViewer', () => {
@@ -16,24 +18,30 @@ describe('ReferenceImageViewer', () => {
       title: 'Simple Face',
       filePath: 'references/face.png',
     });
+    mockGetReferenceImageData.mockResolvedValue(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+    );
   });
 
   it('shows loading state initially', () => {
     mockGetReference.mockReturnValue(new Promise(() => {})); // never resolves
+    mockGetReferenceImageData.mockReturnValue(new Promise(() => {}));
     render(<ReferenceImageViewer referenceId="ref-001" />);
 
     expect(screen.getByTestId('reference-loading')).toBeInTheDocument();
     expect(screen.getByText('Loading reference...')).toBeInTheDocument();
   });
 
-  it('displays reference placeholder after loading', async () => {
+  it('displays reference image after loading', async () => {
     render(<ReferenceImageViewer referenceId="ref-001" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('reference-placeholder')).toBeInTheDocument();
+      expect(screen.getByTestId('reference-image')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Simple Face')).toBeInTheDocument();
+    const img = screen.getByTestId('reference-image') as HTMLImageElement;
+    expect(img.alt).toBe('Simple Face');
+    expect(img.src).toContain('data:image/png;base64,');
   });
 
   it('shows error state on failure', async () => {

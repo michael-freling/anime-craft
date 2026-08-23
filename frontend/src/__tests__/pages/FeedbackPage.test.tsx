@@ -6,8 +6,8 @@ import FeedbackPage from '../../pages/FeedbackPage';
 
 const mockRequestFeedback = vi.fn();
 const mockGetSession = vi.fn();
-const mockGetReference = vi.fn();
-const mockGetDrawing = vi.fn();
+const mockGetReferenceImageData = vi.fn();
+const mockGetDrawingImageData = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js', () => ({
   RequestFeedback: (...args: any[]) => mockRequestFeedback(...args),
@@ -18,11 +18,11 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
-  GetReference: (...args: any[]) => mockGetReference(...args),
+  GetReferenceImageData: (...args: any[]) => mockGetReferenceImageData(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
-  GetDrawing: (...args: any[]) => mockGetDrawing(...args),
+  GetDrawingImageData: (...args: any[]) => mockGetDrawingImageData(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/logservice.js', () => ({
@@ -60,14 +60,12 @@ describe('FeedbackPage', () => {
       id: 'session-001',
       referenceImageId: 'ref-001',
     });
-    mockGetReference.mockResolvedValue({
-      id: 'ref-001',
-      filePath: 'references/face.png',
-    });
-    mockGetDrawing.mockResolvedValue({
-      id: 'drawing-001',
-      filePath: 'drawings/drawing-001.png',
-    });
+    mockGetReferenceImageData.mockResolvedValue(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+    );
+    mockGetDrawingImageData.mockResolvedValue(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+    );
   });
 
   it('shows loading state initially', () => {
