@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import ToolBar from '../../components/drawing/ToolBar';
@@ -39,7 +39,21 @@ describe('ToolBar', () => {
     expect(screen.queryByTestId('btn-clear')).not.toBeInTheDocument();
   });
 
-  it('advertises the keyboard shortcut for each tool', () => {
+  it('shows the keyboard shortcut on each button', () => {
+    render(<ToolBar {...defaultProps} />);
+
+    // Visible on the button itself, not only in a tooltip.
+    expect(within(screen.getByTestId('tool-brush')).getByText('B')).toBeInTheDocument();
+    expect(within(screen.getByTestId('tool-eraser')).getByText('E')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('btn-undo')).getByText('Ctrl+Z')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('btn-redo')).getByText('Ctrl+Shift+Z')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the shortcut in the tooltip too', () => {
     render(<ToolBar {...defaultProps} />);
 
     expect(screen.getByTestId('tool-brush')).toHaveAttribute('title', 'Brush (B)');

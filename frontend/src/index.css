@@ -504,6 +504,29 @@ body {
   color: #ffffff;
 }
 
+/* Visible keyboard hint inside a toolbar button. */
+.toolbar-key {
+  margin-left: 0.35rem;
+  padding: 0 0.25rem;
+  border: 1px solid #0f3460;
+  border-radius: 3px;
+  background: #0f3460;
+  color: #cfd2e6;
+  font-family: inherit;
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.toolbar-btn.active .toolbar-key {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.toolbar-btn:disabled .toolbar-key {
+  opacity: 0.55;
+}
+
 .toolbar-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;

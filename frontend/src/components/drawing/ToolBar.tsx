@@ -15,6 +15,13 @@ const BRUSH_SIZES = [
   { label: "Large", value: 10 },
 ];
 
+// Shown on the buttons themselves — a shortcut nobody can see is a shortcut
+// nobody learns. Mac keyboards get the symbols they actually have.
+const isMac =
+  typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent);
+const UNDO_KEY = isMac ? "\u2318Z" : "Ctrl+Z";
+const REDO_KEY = isMac ? "\u21e7\u2318Z" : "Ctrl+Shift+Z";
+
 const COLOR_PALETTE = [
   { label: "Black", value: "#000000" },
   { label: "Red", value: "#f44336" },
@@ -42,6 +49,7 @@ function ToolBar({
           data-testid="tool-brush"
         >
           Brush
+          <kbd className="toolbar-key">B</kbd>
         </button>
         <button
           className={`toolbar-btn ${state.tool === "eraser" ? "active" : ""}`}
@@ -50,6 +58,7 @@ function ToolBar({
           data-testid="tool-eraser"
         >
           Eraser
+          <kbd className="toolbar-key">E</kbd>
         </button>
       </div>
 
@@ -84,19 +93,21 @@ function ToolBar({
           className="toolbar-btn"
           onClick={onUndo}
           disabled={!state.canUndo}
-          title="Undo (Ctrl+Z)"
+          title={`Undo (${UNDO_KEY})`}
           data-testid="btn-undo"
         >
           Undo
+          <kbd className="toolbar-key">{UNDO_KEY}</kbd>
         </button>
         <button
           className="toolbar-btn"
           onClick={onRedo}
           disabled={!state.canRedo}
-          title="Redo (Ctrl+Shift+Z)"
+          title={`Redo (${REDO_KEY})`}
           data-testid="btn-redo"
         >
           Redo
+          <kbd className="toolbar-key">{REDO_KEY}</kbd>
         </button>
       </div>
     </div>
