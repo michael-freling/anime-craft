@@ -13,10 +13,10 @@ import (
 type LogEntry struct {
 	Timestamp string `json:"ts"`
 	Source    string `json:"source"`
-	Level    string `json:"level"`
-	Method   string `json:"method"`
-	Message  string `json:"message"`
-	Data     string `json:"data,omitempty"`
+	Level     string `json:"level"`
+	Method    string `json:"method"`
+	Message   string `json:"message"`
+	Data      string `json:"data,omitempty"`
 }
 
 type LogService struct {
@@ -35,10 +35,10 @@ func (s *LogService) Log(level, method, message, data string) {
 	entry := LogEntry{
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Source:    "frontend",
-		Level:    level,
-		Method:   method,
-		Message:  message,
-		Data:     data,
+		Level:     level,
+		Method:    method,
+		Message:   message,
+		Data:      data,
 	}
 	s.writeEntry(entry)
 }
@@ -48,10 +48,10 @@ func (s *LogService) WriteBackendLog(level, method, message, data string) {
 	entry := LogEntry{
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Source:    "backend",
-		Level:    level,
-		Method:   method,
-		Message:  message,
-		Data:     data,
+		Level:     level,
+		Method:    method,
+		Message:   message,
+		Data:      data,
 	}
 	s.writeEntry(entry)
 }
@@ -76,6 +76,12 @@ func (s *LogService) writeEntry(entry LogEntry) {
 		slog.Error("failed to open debug log", "path", s.logPath, "error", err)
 		return
 	}
-	defer f.Close()
-	fmt.Fprintln(f, string(line))
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close debug log", "path", s.logPath, "error", err)
+		}
+	}()
+	if _, err := fmt.Fprintln(f, string(line)); err != nil {
+		slog.Error("failed to write debug log entry", "path", s.logPath, "error", err)
+	}
 }
