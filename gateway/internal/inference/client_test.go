@@ -30,11 +30,17 @@ type fakeInferenceServer struct {
 	extractReceived   []byte
 
 	// GenerateFeedback behavior.
-	feedbackTextChunks   []string
-	feedbackResult       *pb.FeedbackResult
-	feedbackErr          error
-	feedbackReceivedMu   sync.Mutex
-	feedbackReceivedReq  *pb.GenerateFeedbackRequest
+	feedbackTextChunks  []string
+	feedbackResult      *pb.FeedbackResult
+	feedbackErr         error
+	feedbackReceivedMu  sync.Mutex
+	feedbackReceivedReq *pb.GenerateFeedbackRequest
+
+	// CompareImages behavior.
+	compareResponse    []byte
+	compareErr         error
+	compareReceivedMu  sync.Mutex
+	compareReceivedReq *pb.CompareImagesRequest
 
 	// HealthCheck behavior.
 	healthCheckCalls      int32
@@ -85,6 +91,20 @@ func (s *fakeInferenceServer) GenerateFeedback(req *pb.GenerateFeedbackRequest, 
 		}
 	}
 	return nil
+}
+
+func (s *fakeInferenceServer) CompareImages(ctx context.Context, req *pb.CompareImagesRequest) (*pb.CompareImagesResponse, error) {
+	s.compareReceivedMu.Lock()
+	s.compareReceivedReq = &pb.CompareImagesRequest{
+		ReferenceLineArtPng: append([]byte(nil), req.GetReferenceLineArtPng()...),
+		DrawingPng:          append([]byte(nil), req.GetDrawingPng()...),
+	}
+	s.compareReceivedMu.Unlock()
+
+	if s.compareErr != nil {
+		return nil, s.compareErr
+	}
+	return &pb.CompareImagesResponse{HeatmapPng: s.compareResponse}, nil
 }
 
 func (s *fakeInferenceServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
@@ -315,6 +335,42 @@ func TestClient_WaitReady_Timeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not ready") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "not ready")
+	}
+}
+
+func TestClient_CompareImages(t *testing.T) {
+	refBytes := []byte("reference-line-art")
+	drawingBytes := []byte("user-drawing")
+	expectedHeatmap := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02}
+
+	srv := &fakeInferenceServer{
+		compareResponse: expectedHeatmap,
+	}
+	client := startTestServer(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	got, err := client.CompareImages(ctx, refBytes, drawingBytes)
+	if err != nil {
+		t.Fatalf("CompareImages: %v", err)
+	}
+	if string(got) != string(expectedHeatmap) {
+		t.Errorf("CompareImages returned bytes = %x, want %x", got, expectedHeatmap)
+	}
+
+	// Verify the server received the correct request fields.
+	srv.compareReceivedMu.Lock()
+	req := srv.compareReceivedReq
+	srv.compareReceivedMu.Unlock()
+	if req == nil {
+		t.Fatal("server did not record any compare request")
+	}
+	if string(req.GetReferenceLineArtPng()) != string(refBytes) {
+		t.Errorf("server ReferenceLineArtPng = %q, want %q", req.GetReferenceLineArtPng(), refBytes)
+	}
+	if string(req.GetDrawingPng()) != string(drawingBytes) {
+		t.Errorf("server DrawingPng = %q, want %q", req.GetDrawingPng(), drawingBytes)
 	}
 }
 

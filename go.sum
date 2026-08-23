@@ -125,8 +125,6 @@ github.com/wailsapp/wails/v3 v3.0.0-alpha.11 h1:MYZk2ci8fBd3loWanLzAYgAFcmq4qTRF
 github.com/wailsapp/wails/v3 v3.0.0-alpha.11/go.mod h1:4LCCW7s9e4PuSmu7l9OTvfWIGMO8TaSiftSeR5NpBIc=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
-github.com/yalue/onnxruntime_go v1.27.0 h1:c1YSgDNtpf0WGtxj3YeRIb8VC5LmM1J+Ve3uHdteC1U=
-github.com/yalue/onnxruntime_go v1.27.0/go.mod h1:b4X26A8pekNb1ACJ58wAXgNKeUCGEAQ9dmACut9Sm/4=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/otel v1.39.0 h1:8yPrr/S0ND9QEfTfdP9V+SiwT4E0G7Y5MO7p85nis48=

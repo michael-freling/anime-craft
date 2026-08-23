@@ -9,7 +9,9 @@ import (
 
 	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // Client wraps the gRPC connection to the Python inference service.
@@ -51,14 +53,44 @@ func (c *Client) Extract(imageData []byte) ([]byte, error) {
 }
 
 // GenerateFeedback sends images to the VLM and returns the structured result.
-// For now, this is a blocking call that collects all streaming chunks.
-// Streaming to the frontend can be added later.
+// If the inference service returns UNAVAILABLE (model still loading), it
+// retries with exponential backoff up to 2 minutes.
 func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, drawingPNG []byte, exerciseMode string) (*pb.FeedbackResult, error) {
-	stream, err := c.client.GenerateFeedback(ctx, &pb.GenerateFeedbackRequest{
+	req := &pb.GenerateFeedbackRequest{
 		ReferenceLineArtPng: referenceLineArt,
 		DrawingPng:          drawingPNG,
 		ExerciseMode:        exerciseMode,
-	})
+	}
+
+	backoff := 2 * time.Second
+	deadline := time.Now().Add(2 * time.Minute)
+
+	for {
+		result, err := c.doGenerateFeedback(ctx, req)
+		if err == nil {
+			return result, nil
+		}
+
+		code := status.Code(err)
+		if (code != codes.Unavailable && code != codes.ResourceExhausted) || time.Now().After(deadline) {
+			return nil, err
+		}
+
+		slog.Info("inference service not ready or busy, retrying...", "backoff", backoff, "code", code, "error", err)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+func (c *Client) doGenerateFeedback(ctx context.Context, req *pb.GenerateFeedbackRequest) (*pb.FeedbackResult, error) {
+	stream, err := c.client.GenerateFeedback(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("generate feedback via gRPC: %w", err)
 	}
@@ -70,11 +102,9 @@ func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, 
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("receive feedback stream: %w", err)
+			return nil, err
 		}
 
-		// We only care about the final FeedbackResult for now.
-		// Text chunks are logged but discarded.
 		switch payload := resp.GetPayload().(type) {
 		case *pb.GenerateFeedbackResponse_TextChunk:
 			slog.Debug("feedback text chunk received", "length", len(payload.TextChunk))
@@ -87,6 +117,19 @@ func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, 
 		return nil, fmt.Errorf("inference service returned no feedback result")
 	}
 	return result, nil
+}
+
+// CompareImages sends both images to the inference service and returns
+// an SSIM heatmap PNG.
+func (c *Client) CompareImages(ctx context.Context, referenceLineArt []byte, drawingPNG []byte) ([]byte, error) {
+	resp, err := c.client.CompareImages(ctx, &pb.CompareImagesRequest{
+		ReferenceLineArtPng: referenceLineArt,
+		DrawingPng:          drawingPNG,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("compare images via gRPC: %w", err)
+	}
+	return resp.GetHeatmapPng(), nil
 }
 
 // WaitReady polls HealthCheck until the service reports ready or the timeout

@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	InferenceService_ExtractLineArt_FullMethodName   = "/animecraft.inference.InferenceService/ExtractLineArt"
 	InferenceService_GenerateFeedback_FullMethodName = "/animecraft.inference.InferenceService/GenerateFeedback"
+	InferenceService_CompareImages_FullMethodName    = "/animecraft.inference.InferenceService/CompareImages"
 	InferenceService_HealthCheck_FullMethodName      = "/animecraft.inference.InferenceService/HealthCheck"
 )
 
@@ -33,6 +34,9 @@ type InferenceServiceClient interface {
 	// GenerateFeedback compares reference line art with a user's drawing
 	// and streams structured feedback token-by-token.
 	GenerateFeedback(ctx context.Context, in *GenerateFeedbackRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateFeedbackResponse], error)
+	// CompareImages generates an SSIM heatmap comparing reference line art
+	// with a user's drawing.
+	CompareImages(ctx context.Context, in *CompareImagesRequest, opts ...grpc.CallOption) (*CompareImagesResponse, error)
 	// HealthCheck reports whether the service and its models are loaded.
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
@@ -74,6 +78,16 @@ func (c *inferenceServiceClient) GenerateFeedback(ctx context.Context, in *Gener
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type InferenceService_GenerateFeedbackClient = grpc.ServerStreamingClient[GenerateFeedbackResponse]
 
+func (c *inferenceServiceClient) CompareImages(ctx context.Context, in *CompareImagesRequest, opts ...grpc.CallOption) (*CompareImagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompareImagesResponse)
+	err := c.cc.Invoke(ctx, InferenceService_CompareImages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *inferenceServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthCheckResponse)
@@ -93,6 +107,9 @@ type InferenceServiceServer interface {
 	// GenerateFeedback compares reference line art with a user's drawing
 	// and streams structured feedback token-by-token.
 	GenerateFeedback(*GenerateFeedbackRequest, grpc.ServerStreamingServer[GenerateFeedbackResponse]) error
+	// CompareImages generates an SSIM heatmap comparing reference line art
+	// with a user's drawing.
+	CompareImages(context.Context, *CompareImagesRequest) (*CompareImagesResponse, error)
 	// HealthCheck reports whether the service and its models are loaded.
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedInferenceServiceServer()
@@ -110,6 +127,9 @@ func (UnimplementedInferenceServiceServer) ExtractLineArt(context.Context, *Extr
 }
 func (UnimplementedInferenceServiceServer) GenerateFeedback(*GenerateFeedbackRequest, grpc.ServerStreamingServer[GenerateFeedbackResponse]) error {
 	return status.Error(codes.Unimplemented, "method GenerateFeedback not implemented")
+}
+func (UnimplementedInferenceServiceServer) CompareImages(context.Context, *CompareImagesRequest) (*CompareImagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompareImages not implemented")
 }
 func (UnimplementedInferenceServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
@@ -164,6 +184,24 @@ func _InferenceService_GenerateFeedback_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type InferenceService_GenerateFeedbackServer = grpc.ServerStreamingServer[GenerateFeedbackResponse]
 
+func _InferenceService_CompareImages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompareImagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InferenceServiceServer).CompareImages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InferenceService_CompareImages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InferenceServiceServer).CompareImages(ctx, req.(*CompareImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InferenceService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthCheckRequest)
 	if err := dec(in); err != nil {
@@ -192,6 +230,10 @@ var InferenceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExtractLineArt",
 			Handler:    _InferenceService_ExtractLineArt_Handler,
+		},
+		{
+			MethodName: "CompareImages",
+			Handler:    _InferenceService_CompareImages_Handler,
 		},
 		{
 			MethodName: "HealthCheck",

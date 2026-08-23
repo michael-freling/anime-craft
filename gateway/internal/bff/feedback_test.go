@@ -2,6 +2,7 @@ package bff
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/color"
 	"image/png"
@@ -10,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/michael-freling/anime-craft/gateway/internal/ai"
+	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
 	"github.com/michael-freling/anime-craft/gateway/internal/model"
 	"github.com/michael-freling/anime-craft/gateway/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -48,22 +49,48 @@ func createTestPNGFile(t *testing.T, path string) {
 	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0644))
 }
 
+// mockFeedbackGenerator is a test double for FeedbackGenerator that returns
+// deterministic feedback matching the values the old ai.MockFeedbackClient
+// returned for "line_work" mode.
+type mockFeedbackGenerator struct{}
+
+func (m *mockFeedbackGenerator) GenerateFeedback(_ context.Context, _ []byte, _ []byte, exerciseMode string) (*pb.FeedbackResult, error) {
+	result := &pb.FeedbackResult{
+		OverallScore:     72,
+		ProportionsScore: 75,
+		LineQualityScore: 68,
+		AccuracyScore:    0,
+		Summary:          "Good effort! Your proportions are solid, but the line work could be smoother. Keep practicing to build line confidence.",
+		Details:          "Your drawing shows a good understanding of the overall shape and proportions of the reference. The main areas for improvement are in line quality — try drawing longer, more confident strokes instead of short, sketchy lines. Focus on varying line weight to add depth and dimension.",
+		Strengths:        []string{"Good overall proportions", "Clean line intersections", "Accurate placement of features"},
+		Improvements:     []string{"Work on line confidence — try drawing strokes in single motions", "Vary line weight to convey depth and form", "Practice consistent line weight throughout the drawing"},
+	}
+
+	// The old mock returned ColorAccuracyScore=73 for non-line_work modes.
+	// The proto-based FeedbackResult uses AccuracyScore instead.
+	if exerciseMode != "line_work" {
+		result.AccuracyScore = 73
+	}
+
+	return result, nil
+}
+
 func TestFeedbackService_RequestFeedback(t *testing.T) {
 	db := testDB(t)
 	feedbackRepo := repository.NewFeedbackRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, nil, generator, nil)
 
-	// Create reference image file and update seeded ref-001 to point to it
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	// Create reference image file and update seeded ref-001 to point to it (relative path)
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -92,7 +119,7 @@ func TestFeedbackService_RequestFeedback(t *testing.T) {
 	assert.NotEmpty(t, feedback.ID)
 	assert.Equal(t, "sess-001", feedback.SessionID)
 	assert.Equal(t, 72, feedback.OverallScore)
-	assert.Nil(t, feedback.ColorAccuracyScore) // line_work mode: color=0 so not set
+	assert.Nil(t, feedback.AccuracyScore) // line_work mode: accuracy=0 so not set
 	assert.NotNil(t, feedback.ProportionsScore)
 	assert.Equal(t, 75, *feedback.ProportionsScore)
 	assert.NotNil(t, feedback.LineQualityScore)
@@ -113,16 +140,16 @@ func TestFeedbackService_RequestFeedback_ReturnsCached(t *testing.T) {
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, nil, generator, nil)
 
-	// Create reference image file and update seeded ref-001 to point to it
-	refPath := filepath.Join(dataDir, "ref.png")
-	require.NoError(t, os.WriteFile(refPath, []byte("fake-ref-image"), 0644))
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refPath, "ref-001")
+	// Create reference image file and update seeded ref-001 to point to it (relative path)
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "references"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "references", "ref-001.png"), []byte("fake-ref-image"), 0644))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -162,17 +189,17 @@ func TestFeedbackService_RequestFeedback_WithLineArt(t *testing.T) {
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, extractor, generator, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
 	createTestPNGFile(t, refImagePath)
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refImagePath, "ref-001")
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -211,17 +238,17 @@ func TestFeedbackService_RequestFeedback_CachedWithLineArt(t *testing.T) {
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, extractor, generator, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
 	createTestPNGFile(t, refImagePath)
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refImagePath, "ref-001")
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -262,17 +289,17 @@ func TestFeedbackService_GetFeedback_WithLineArt(t *testing.T) {
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
 	extractor := &mockLineArtExtractor{}
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, extractor, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, extractor, generator, nil)
 
 	// Create a valid PNG reference image file
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
 	createTestPNGFile(t, refImagePath)
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refImagePath, "ref-001")
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session
@@ -315,17 +342,17 @@ func TestFeedbackService_RequestFeedback_WithoutLineArt(t *testing.T) {
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
 	refRepo := repository.NewReferenceRepository(db)
-	aiClient := ai.NewMockFeedbackClient()
+	generator := &mockFeedbackGenerator{}
 
 	dataDir := t.TempDir()
 
 	// Pass nil extractor -- line art should be empty
-	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, aiClient, dataDir, nil, nil)
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, nil, generator, nil)
 
 	// Create a valid PNG reference image file (content doesn't matter since extractor is nil)
 	refImagePath := filepath.Join(dataDir, "references", "ref-001.png")
 	createTestPNGFile(t, refImagePath)
-	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", refImagePath, "ref-001")
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
 	require.NoError(t, err)
 
 	// Create a session

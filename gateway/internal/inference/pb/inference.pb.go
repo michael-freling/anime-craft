@@ -351,6 +351,102 @@ func (x *FeedbackResult) GetImprovements() []string {
 	return nil
 }
 
+type CompareImagesRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	ReferenceLineArtPng []byte                 `protobuf:"bytes,1,opt,name=reference_line_art_png,json=referenceLineArtPng,proto3" json:"reference_line_art_png,omitempty"`
+	DrawingPng          []byte                 `protobuf:"bytes,2,opt,name=drawing_png,json=drawingPng,proto3" json:"drawing_png,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CompareImagesRequest) Reset() {
+	*x = CompareImagesRequest{}
+	mi := &file_inference_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompareImagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompareImagesRequest) ProtoMessage() {}
+
+func (x *CompareImagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_inference_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompareImagesRequest.ProtoReflect.Descriptor instead.
+func (*CompareImagesRequest) Descriptor() ([]byte, []int) {
+	return file_inference_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CompareImagesRequest) GetReferenceLineArtPng() []byte {
+	if x != nil {
+		return x.ReferenceLineArtPng
+	}
+	return nil
+}
+
+func (x *CompareImagesRequest) GetDrawingPng() []byte {
+	if x != nil {
+		return x.DrawingPng
+	}
+	return nil
+}
+
+type CompareImagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	HeatmapPng    []byte                 `protobuf:"bytes,1,opt,name=heatmap_png,json=heatmapPng,proto3" json:"heatmap_png,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompareImagesResponse) Reset() {
+	*x = CompareImagesResponse{}
+	mi := &file_inference_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompareImagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompareImagesResponse) ProtoMessage() {}
+
+func (x *CompareImagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_inference_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompareImagesResponse.ProtoReflect.Descriptor instead.
+func (*CompareImagesResponse) Descriptor() ([]byte, []int) {
+	return file_inference_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CompareImagesResponse) GetHeatmapPng() []byte {
+	if x != nil {
+		return x.HeatmapPng
+	}
+	return nil
+}
+
 type HealthCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -359,7 +455,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_inference_proto_msgTypes[5]
+	mi := &file_inference_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -371,7 +467,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_inference_proto_msgTypes[5]
+	mi := &file_inference_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -384,7 +480,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_inference_proto_rawDescGZIP(), []int{5}
+	return file_inference_proto_rawDescGZIP(), []int{7}
 }
 
 type HealthCheckResponse struct {
@@ -398,7 +494,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_inference_proto_msgTypes[6]
+	mi := &file_inference_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -410,7 +506,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_inference_proto_msgTypes[6]
+	mi := &file_inference_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -423,7 +519,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_inference_proto_rawDescGZIP(), []int{6}
+	return file_inference_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *HealthCheckResponse) GetLineArtReady() bool {
@@ -476,15 +572,23 @@ const file_inference_proto_rawDesc = "" +
 	"\asummary\x18\x05 \x01(\tR\asummary\x12\x18\n" +
 	"\adetails\x18\x06 \x01(\tR\adetails\x12\x1c\n" +
 	"\tstrengths\x18\a \x03(\tR\tstrengths\x12\"\n" +
-	"\fimprovements\x18\b \x03(\tR\fimprovements\"\x14\n" +
+	"\fimprovements\x18\b \x03(\tR\fimprovements\"l\n" +
+	"\x14CompareImagesRequest\x123\n" +
+	"\x16reference_line_art_png\x18\x01 \x01(\fR\x13referenceLineArtPng\x12\x1f\n" +
+	"\vdrawing_png\x18\x02 \x01(\fR\n" +
+	"drawingPng\"8\n" +
+	"\x15CompareImagesResponse\x12\x1f\n" +
+	"\vheatmap_png\x18\x01 \x01(\fR\n" +
+	"heatmapPng\"\x14\n" +
 	"\x12HealthCheckRequest\"\x89\x01\n" +
 	"\x13HealthCheckResponse\x12$\n" +
 	"\x0eline_art_ready\x18\x01 \x01(\bR\flineArtReady\x12%\n" +
 	"\x0efeedback_ready\x18\x02 \x01(\bR\rfeedbackReady\x12%\n" +
-	"\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage2\xd8\x02\n" +
+	"\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage2\xc2\x03\n" +
 	"\x10InferenceService\x12k\n" +
 	"\x0eExtractLineArt\x12+.animecraft.inference.ExtractLineArtRequest\x1a,.animecraft.inference.ExtractLineArtResponse\x12s\n" +
-	"\x10GenerateFeedback\x12-.animecraft.inference.GenerateFeedbackRequest\x1a..animecraft.inference.GenerateFeedbackResponse0\x01\x12b\n" +
+	"\x10GenerateFeedback\x12-.animecraft.inference.GenerateFeedbackRequest\x1a..animecraft.inference.GenerateFeedbackResponse0\x01\x12h\n" +
+	"\rCompareImages\x12*.animecraft.inference.CompareImagesRequest\x1a+.animecraft.inference.CompareImagesResponse\x12b\n" +
 	"\vHealthCheck\x12(.animecraft.inference.HealthCheckRequest\x1a).animecraft.inference.HealthCheckResponseBFZDgithub.com/michael-freling/anime-craft/gateway/internal/inference/pbb\x06proto3"
 
 var (
@@ -499,26 +603,30 @@ func file_inference_proto_rawDescGZIP() []byte {
 	return file_inference_proto_rawDescData
 }
 
-var file_inference_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_inference_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_inference_proto_goTypes = []any{
 	(*ExtractLineArtRequest)(nil),    // 0: animecraft.inference.ExtractLineArtRequest
 	(*ExtractLineArtResponse)(nil),   // 1: animecraft.inference.ExtractLineArtResponse
 	(*GenerateFeedbackRequest)(nil),  // 2: animecraft.inference.GenerateFeedbackRequest
 	(*GenerateFeedbackResponse)(nil), // 3: animecraft.inference.GenerateFeedbackResponse
 	(*FeedbackResult)(nil),           // 4: animecraft.inference.FeedbackResult
-	(*HealthCheckRequest)(nil),       // 5: animecraft.inference.HealthCheckRequest
-	(*HealthCheckResponse)(nil),      // 6: animecraft.inference.HealthCheckResponse
+	(*CompareImagesRequest)(nil),     // 5: animecraft.inference.CompareImagesRequest
+	(*CompareImagesResponse)(nil),    // 6: animecraft.inference.CompareImagesResponse
+	(*HealthCheckRequest)(nil),       // 7: animecraft.inference.HealthCheckRequest
+	(*HealthCheckResponse)(nil),      // 8: animecraft.inference.HealthCheckResponse
 }
 var file_inference_proto_depIdxs = []int32{
 	4, // 0: animecraft.inference.GenerateFeedbackResponse.result:type_name -> animecraft.inference.FeedbackResult
 	0, // 1: animecraft.inference.InferenceService.ExtractLineArt:input_type -> animecraft.inference.ExtractLineArtRequest
 	2, // 2: animecraft.inference.InferenceService.GenerateFeedback:input_type -> animecraft.inference.GenerateFeedbackRequest
-	5, // 3: animecraft.inference.InferenceService.HealthCheck:input_type -> animecraft.inference.HealthCheckRequest
-	1, // 4: animecraft.inference.InferenceService.ExtractLineArt:output_type -> animecraft.inference.ExtractLineArtResponse
-	3, // 5: animecraft.inference.InferenceService.GenerateFeedback:output_type -> animecraft.inference.GenerateFeedbackResponse
-	6, // 6: animecraft.inference.InferenceService.HealthCheck:output_type -> animecraft.inference.HealthCheckResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
+	5, // 3: animecraft.inference.InferenceService.CompareImages:input_type -> animecraft.inference.CompareImagesRequest
+	7, // 4: animecraft.inference.InferenceService.HealthCheck:input_type -> animecraft.inference.HealthCheckRequest
+	1, // 5: animecraft.inference.InferenceService.ExtractLineArt:output_type -> animecraft.inference.ExtractLineArtResponse
+	3, // 6: animecraft.inference.InferenceService.GenerateFeedback:output_type -> animecraft.inference.GenerateFeedbackResponse
+	6, // 7: animecraft.inference.InferenceService.CompareImages:output_type -> animecraft.inference.CompareImagesResponse
+	8, // 8: animecraft.inference.InferenceService.HealthCheck:output_type -> animecraft.inference.HealthCheckResponse
+	5, // [5:9] is the sub-list for method output_type
+	1, // [1:5] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -539,7 +647,7 @@ func file_inference_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_inference_proto_rawDesc), len(file_inference_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
