@@ -6,14 +6,13 @@ import os
 import numpy as np
 import pytest
 import torch
-import torch.nn as nn
-from PIL import Image
-
 from animecraft_inference.config import Config
 from animecraft_inference.lineart.extractor import (
     LineArtExtractor,
     _Anime2SketchPrePostProcess,
 )
+from PIL import Image
+from torch import nn
 
 
 class DummyInnerModel(nn.Module):

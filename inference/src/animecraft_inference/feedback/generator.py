@@ -1,16 +1,16 @@
 """Feedback generation using Qwen2.5-VL-3B-Instruct.
 
 Loads the vision-language model and generates structured feedback
-by comparing a reference line art image with the student's drawing.
+by comparing a reference line art image with the user's drawing.
 """
 
 import base64
 import json
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from threading import Thread
-from typing import Iterator, Optional
 
 import torch
 from PIL import Image
@@ -21,7 +21,10 @@ from transformers import (
 )
 
 from animecraft_inference.config import Config
-from animecraft_inference.feedback.prompt import build_feedback_prompt, build_user_message
+from animecraft_inference.feedback.prompt import (
+    build_feedback_prompt,
+    build_user_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +126,8 @@ class FeedbackGenerator:
 
     def __init__(self, config: Config):
         self._config = config
-        self._model: Optional[AutoModelForImageTextToText] = None
-        self._processor: Optional[AutoProcessor] = None
+        self._model: AutoModelForImageTextToText | None = None
+        self._processor: AutoProcessor | None = None
 
     @property
     def is_loaded(self) -> bool:
@@ -139,9 +142,13 @@ class FeedbackGenerator:
 
         logger.info("Loading feedback model %s on device %s...", model_id, device)
 
+        # Cap image token count: each 28x28 patch = 1 token.
+        # Default min_pixels (256*28*28=200704) would upscale small images.
         self._processor = AutoProcessor.from_pretrained(
             model_id,
             cache_dir=cache_dir,
+            min_pixels=64 * 28 * 28,
+            max_pixels=256 * 28 * 28,
         )
 
         dtype = torch.float16 if device == "cuda" else torch.float32
@@ -153,6 +160,10 @@ class FeedbackGenerator:
         )
         if device == "cpu":
             self._model = self._model.to(device)
+            self._model = torch.quantization.quantize_dynamic(
+                self._model, {torch.nn.Linear}, dtype=torch.qint8,
+            )
+            logger.info("Applied int8 dynamic quantization for CPU.")
 
         self._model.eval()
         logger.info("Feedback model loaded successfully.")
@@ -172,7 +183,7 @@ class FeedbackGenerator:
 
         Args:
             reference_line_art_png: PNG bytes of the reference line art.
-            drawing_png: PNG bytes of the student's drawing.
+            drawing_png: PNG bytes of the user's drawing.
             exercise_mode: The exercise type (e.g. "quick_sketch").
 
         Yields:
@@ -212,19 +223,20 @@ class FeedbackGenerator:
             messages, tokenize=False, add_generation_prompt=True
         )
 
-        # Process inputs (handles both text and images)
+        import io as _io
+
+        ref_img = Image.open(_io.BytesIO(reference_line_art_png)).convert("RGB")
+        draw_img = Image.open(_io.BytesIO(drawing_png)).convert("RGB")
+
+        # Processor handles resizing via min_pixels/max_pixels set at load time.
         inputs = self._processor(
             text=[text_prompt],
-            images=[
-                Image.open(__import__("io").BytesIO(reference_line_art_png)).convert("RGB"),
-                Image.open(__import__("io").BytesIO(drawing_png)).convert("RGB"),
-            ],
+            images=[ref_img, draw_img],
             padding=True,
             return_tensors="pt",
         )
         inputs = inputs.to(self._model.device)
 
-        # Set up streaming
         streamer = TextIteratorStreamer(
             self._processor.tokenizer,
             skip_prompt=True,
@@ -239,12 +251,14 @@ class FeedbackGenerator:
             "streamer": streamer,
         }
 
-        # Run generation in a background thread so we can iterate the streamer
-        thread = Thread(target=self._model.generate, kwargs=generation_kwargs)
+        def _run() -> None:
+            with torch.inference_mode():
+                self._model.generate(**generation_kwargs)
+
+        thread = Thread(target=_run)
         thread.start()
 
         try:
-            for chunk in streamer:
-                yield chunk
+            yield from streamer
         finally:
             thread.join()

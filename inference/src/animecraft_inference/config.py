@@ -54,12 +54,12 @@ class Config:
     # Generation parameters
     feedback_max_new_tokens: int = field(
         default_factory=lambda: int(
-            os.environ.get("INFERENCE_FEEDBACK_MAX_TOKENS", "2048")
+            os.environ.get("INFERENCE_FEEDBACK_MAX_TOKENS", "512")
         )
     )
     feedback_temperature: float = field(
         default_factory=lambda: float(
-            os.environ.get("INFERENCE_FEEDBACK_TEMPERATURE", "0.7")
+            os.environ.get("INFERENCE_FEEDBACK_TEMPERATURE", "0")
         )
     )
 

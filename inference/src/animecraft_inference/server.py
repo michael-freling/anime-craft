@@ -11,8 +11,9 @@ Run with: python -m animecraft_inference.server
 import logging
 import signal
 import sys
+import threading
+from collections.abc import Iterator
 from concurrent import futures
-from typing import Iterator
 
 import grpc
 
@@ -49,6 +50,7 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
     ):
         self._lineart = lineart_extractor
         self._feedback = feedback_generator
+        self._feedback_sem = threading.Semaphore(1)
 
     def ExtractLineArt(
         self,
@@ -105,6 +107,13 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
                 "drawing_png must not be empty.",
             )
 
+        acquired = self._feedback_sem.acquire(timeout=0.1)
+        if not acquired:
+            context.abort(
+                grpc.StatusCode.RESOURCE_EXHAUSTED,
+                "Another feedback request is already in progress. Please wait.",
+            )
+
         try:
             accumulated_text = ""
             for chunk in self._feedback.generate(
@@ -112,28 +121,66 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
                 drawing_png=request.drawing_png,
                 exercise_mode=request.exercise_mode,
             ):
+                # Check if the client has disconnected (e.g. deadline exceeded)
+                # so we can stop generation early instead of wasting GPU cycles.
+                if not context.is_active():
+                    logger.info("Client disconnected, aborting feedback generation")
+                    break
                 accumulated_text += chunk
                 yield inference_pb2.GenerateFeedbackResponse(text_chunk=chunk)
 
-            # Parse the accumulated text into a structured result
-            parsed = parse_feedback_json(accumulated_text)
-            result_msg = inference_pb2.FeedbackResult(
-                overall_score=parsed.overall_score,
-                proportions_score=parsed.proportions_score,
-                line_quality_score=parsed.line_quality_score,
-                accuracy_score=parsed.accuracy_score,
-                summary=parsed.summary,
-                details=parsed.details,
-                strengths=parsed.strengths,
-                improvements=parsed.improvements,
-            )
-            yield inference_pb2.GenerateFeedbackResponse(result=result_msg)
+            # Only send the parsed result if the client is still connected.
+            if context.is_active():
+                parsed = parse_feedback_json(accumulated_text)
+                result_msg = inference_pb2.FeedbackResult(
+                    overall_score=parsed.overall_score,
+                    proportions_score=parsed.proportions_score,
+                    line_quality_score=parsed.line_quality_score,
+                    accuracy_score=parsed.accuracy_score,
+                    summary=parsed.summary,
+                    details=parsed.details,
+                    strengths=parsed.strengths,
+                    improvements=parsed.improvements,
+                )
+                yield inference_pb2.GenerateFeedbackResponse(result=result_msg)
 
         except Exception as exc:
             logger.exception("Feedback generation failed")
+            # Only abort if the client is still listening; otherwise the
+            # context is already cancelled and abort would be a no-op or
+            # raise its own error.
+            if context.is_active():
+                context.abort(
+                    grpc.StatusCode.INTERNAL,
+                    f"Feedback generation failed: {exc}",
+                )
+        finally:
+            self._feedback_sem.release()
+
+    def CompareImages(
+        self,
+        request: inference_pb2.CompareImagesRequest,
+        context: grpc.ServicerContext,
+    ) -> inference_pb2.CompareImagesResponse:
+        """Generate an SSIM heatmap comparing reference line art with a drawing."""
+        if not request.reference_line_art_png or not request.drawing_png:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "Both images required.",
+            )
+
+        try:
+            from animecraft_inference.comparison import compute_ssim_heatmap
+
+            heatmap = compute_ssim_heatmap(
+                request.reference_line_art_png, request.drawing_png
+            )
+            return inference_pb2.CompareImagesResponse(heatmap_png=heatmap)
+        except Exception as exc:
+            logger.exception("Image comparison failed")
             context.abort(
                 grpc.StatusCode.INTERNAL,
-                f"Feedback generation failed: {exc}",
+                f"Image comparison failed: {exc}",
             )
 
     def HealthCheck(
@@ -186,7 +233,7 @@ def serve(config: Config) -> None:
         logger.exception("Failed to load feedback model — continuing without it")
 
     # Create gRPC server
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     servicer = InferenceServicer(lineart_extractor, feedback_generator)
     inference_pb2_grpc.add_InferenceServiceServicer_to_server(servicer, server)
 

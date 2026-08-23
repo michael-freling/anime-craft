@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from animecraft_inference.config import Config
 from animecraft_inference.feedback.generator import (
     FeedbackGenerator,

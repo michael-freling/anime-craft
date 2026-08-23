@@ -12,6 +12,10 @@ service InferenceService {
   // and streams structured feedback token-by-token.
   rpc GenerateFeedback(GenerateFeedbackRequest) returns (stream GenerateFeedbackResponse);
 
+  // CompareImages generates an SSIM heatmap comparing reference line art
+  // with a user's drawing.
+  rpc CompareImages(CompareImagesRequest) returns (CompareImagesResponse);
+
   // HealthCheck reports whether the service and its models are loaded.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 }
@@ -46,6 +50,15 @@ message FeedbackResult {
   string details = 6;
   repeated string strengths = 7;
   repeated string improvements = 8;
+}
+
+message CompareImagesRequest {
+  bytes reference_line_art_png = 1;
+  bytes drawing_png = 2;
+}
+
+message CompareImagesResponse {
+  bytes heatmap_png = 1;
 }
 
 message HealthCheckRequest {}

@@ -18,13 +18,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
+from torch import nn
 
 from animecraft_inference.config import Config
 
@@ -138,9 +137,9 @@ class LineArtExtractor:
 
     def __init__(self, config: Config):
         self._config = config
-        self._model: Optional[_Anime2SketchPrePostProcess] = None
-        self._device: Optional[torch.device] = None
-        self._tmp_dir: Optional[str] = None
+        self._model: _Anime2SketchPrePostProcess | None = None
+        self._device: torch.device | None = None
+        self._tmp_dir: str | None = None
 
     @property
     def is_loaded(self) -> bool:
