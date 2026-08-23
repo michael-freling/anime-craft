@@ -27,55 +27,8 @@ tasks:
     cmds:
       - task: "{{OS}}:run"
 
-  lineart:model:
-    desc: Download Anime2Sketch weights and convert to ONNX
-    dir: inference/lineart
-    status:
-      - test -f anime2sketch.onnx
-    cmds:
-      - pdm install
-      - pdm run convert
-
-  lineart:onnxruntime:windows:
-    desc: Download ONNX Runtime shared library for Windows
-    status:
-      - test -f onnxruntime/lib/onnxruntime.dll
-    cmds:
-      - mkdir -p onnxruntime
-      - curl -L -o /tmp/onnxruntime-win.zip "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip"
-      - unzip -o /tmp/onnxruntime-win.zip -d /tmp/onnxruntime-win
-      - cp -r /tmp/onnxruntime-win/onnxruntime-win-x64-1.24.4/lib onnxruntime/
-      - cp -r /tmp/onnxruntime-win/onnxruntime-win-x64-1.24.4/include onnxruntime/
-      - rm -rf /tmp/onnxruntime-win /tmp/onnxruntime-win.zip
-
-  lineart:onnxruntime:linux:
-    desc: Download ONNX Runtime shared library for Linux
-    status:
-      - test -f onnxruntime/lib/libonnxruntime.so
-    cmds:
-      - mkdir -p onnxruntime
-      - curl -L -o /tmp/onnxruntime-linux.tgz "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz"
-      - tar xzf /tmp/onnxruntime-linux.tgz -C /tmp
-      - cp -r /tmp/onnxruntime-linux-x64-1.24.4/lib onnxruntime/
-      - cp -r /tmp/onnxruntime-linux-x64-1.24.4/include onnxruntime/
-      - rm -rf /tmp/onnxruntime-linux-x64-1.24.4 /tmp/onnxruntime-linux.tgz
-
-  lineart:setup:wsl:
-    desc: Set up line art extraction for WSL->Windows
-    deps:
-      - lineart:model
-      - lineart:onnxruntime:windows
-
-  lineart:setup:linux:
-    desc: Set up line art extraction for Linux
-    deps:
-      - lineart:model
-      - lineart:onnxruntime:linux
-
   dev:
     summary: Runs the application in development mode
-    deps:
-      - lineart:setup:linux
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
@@ -128,23 +81,81 @@ tasks:
     cmds:
       - pdm run serve
 
+  build:wsl:
+    desc: Cross-compile the Windows exe from WSL into bin/anime-craft.exe
+    cmds:
+      - task: windows:build
+        vars:
+          ARCH: '{{.ARCH | default "amd64"}}'
+          PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  build:wsl:dev:
+    desc: Cross-compile a debug Windows exe from WSL (devtools, console log output)
+    cmds:
+      - task: build:wsl
+        vars:
+          PRODUCTION: "false"
+
+  build:wsl:prod:
+    desc: Cross-compile a production Windows exe from WSL (minified, no console window)
+    cmds:
+      - task: build:wsl
+        vars:
+          PRODUCTION: "true"
+
+  build:wsl:desktop:
+    desc: Build the Windows exe in WSL and copy it to the Windows desktop
+    vars:
+      # Ask Windows where the desktop is, so this works for any user and copes
+      # with a OneDrive-redirected Desktop.
+      WINDOWS_DESKTOP_DIR:
+        sh: |
+          wslpath "$(powershell.exe -NoProfile -Command "[Environment]::GetFolderPath('Desktop')" 2>/dev/null | tr -d '\r')" 2>/dev/null || true
+      DEST_DIR: '{{.DESKTOP_DIR | default .WINDOWS_DESKTOP_DIR}}'
+    cmds:
+      - cmd: |
+          if [ -z '{{.DEST_DIR}}' ]; then
+            echo "Could not locate the Windows desktop. Run this from WSL, or pass DESKTOP_DIR=/mnt/c/Users/<user>/Desktop" >&2
+            exit 1
+          fi
+      - task: build:wsl
+        vars:
+          PRODUCTION: '{{.PRODUCTION | default "false"}}'
+      - cp {{.BIN_DIR}}/{{.APP_NAME}}.exe '{{.DEST_DIR}}/{{.APP_NAME}}.exe'
+      - cmd: echo "Copied {{.APP_NAME}}.exe to {{.DEST_DIR}}"
+        silent: true
+
+  build:wsl:desktop:dev:
+    desc: Build a debug Windows exe in WSL and copy it to the Windows desktop
+    cmds:
+      - task: build:wsl:desktop
+        vars:
+          PRODUCTION: "false"
+
+  build:wsl:desktop:prod:
+    desc: Build a production Windows exe in WSL and copy it to the Windows desktop
+    cmds:
+      - task: build:wsl:desktop
+        vars:
+          PRODUCTION: "true"
+
   run:wsl:
     desc: Run the staged Windows exe from WSL with env vars set
     vars:
       WIN_DEV_DIR: /mnt/c/temp/anime-craft-dev
+      WIN_DEV_DIR_WIN: 'C:\temp\anime-craft-dev'
       VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
       INFERENCE_PORT: 50051
     cmds:
       - cmd: >-
-          FRONTEND_DEVSERVER_URL=http://localhost:{{.VITE_PORT}}
-          INFERENCE_SERVICE_ADDR=localhost:{{.INFERENCE_PORT}}
-          {{.WIN_DEV_DIR}}/anime-craft.exe
+          cmd.exe /c "set FRONTEND_DEVSERVER_URL=http://localhost:{{.VITE_PORT}}&&
+          set INFERENCE_SERVICE_ADDR=localhost:{{.INFERENCE_PORT}}&&
+          {{.WIN_DEV_DIR_WIN}}\anime-craft.exe"
 
   dev:wsl:
     summary: Cross-compile Windows exe and start Vite dev server for WSL→Windows development
     deps:
       - common:install:frontend:deps
-      - lineart:setup:wsl
       - inference:install
       - inference:protoc
     vars:
@@ -154,13 +165,11 @@ tasks:
     cmds:
       - wails3 generate bindings ./gateway/cmd/anime-craft || true
       - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -tags dev -o anime-craft.exe ./gateway/cmd/anime-craft
-      # Stage exe and runtime files to a local Windows directory so the app
-      # doesn't load DLLs or models from UNC paths (which can fail on Windows).
-      - mkdir -p {{.WIN_DEV_DIR}}/onnxruntime/lib {{.WIN_DEV_DIR}}/inference/lineart
+      # Stage exe to a local Windows directory.
+      - mkdir -p {{.WIN_DEV_DIR}}
       - cp anime-craft.exe {{.WIN_DEV_DIR}}/
-      - cp -u onnxruntime/lib/*.dll {{.WIN_DEV_DIR}}/onnxruntime/lib/
-      - cmd: cp -u inference/lineart/anime2sketch.onnx {{.WIN_DEV_DIR}}/inference/lineart/
-        ignore_error: true
+      # Kill any stale inference service processes before starting a new one.
+      - cmd: pkill -f 'animecraft_inference.server' || true
       # Start the Python inference service in the background.
       - cmd: cd inference && pdm run serve --port {{.INFERENCE_PORT}} &
         ignore_error: true
