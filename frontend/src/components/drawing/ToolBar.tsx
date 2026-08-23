@@ -1,19 +1,12 @@
-interface DrawingState {
-  tool: "brush" | "eraser";
-  brushSize: number;
-  brushColor: string;
-  canUndo: boolean;
-  canRedo: boolean;
-}
+import type { DrawingState, Tool } from "../../hooks/useDrawingCanvas";
 
 interface ToolBarProps {
   state: DrawingState;
-  onSetTool: (tool: "brush" | "eraser") => void;
+  onSetTool: (tool: Tool) => void;
   onSetBrushSize: (size: number) => void;
   onSetBrushColor: (color: string) => void;
   onUndo: () => void;
   onRedo: () => void;
-  onClear: () => void;
 }
 
 const BRUSH_SIZES = [
@@ -38,7 +31,6 @@ function ToolBar({
   onSetBrushColor,
   onUndo,
   onRedo,
-  onClear,
 }: ToolBarProps) {
   return (
     <div className="toolbar" data-testid="toolbar">
@@ -46,6 +38,7 @@ function ToolBar({
         <button
           className={`toolbar-btn ${state.tool === "brush" ? "active" : ""}`}
           onClick={() => onSetTool("brush")}
+          title="Brush (B)"
           data-testid="tool-brush"
         >
           Brush
@@ -53,6 +46,7 @@ function ToolBar({
         <button
           className={`toolbar-btn ${state.tool === "eraser" ? "active" : ""}`}
           onClick={() => onSetTool("eraser")}
+          title="Eraser (E)"
           data-testid="tool-eraser"
         >
           Eraser
@@ -90,6 +84,7 @@ function ToolBar({
           className="toolbar-btn"
           onClick={onUndo}
           disabled={!state.canUndo}
+          title="Undo (Ctrl+Z)"
           data-testid="btn-undo"
         >
           Undo
@@ -98,19 +93,10 @@ function ToolBar({
           className="toolbar-btn"
           onClick={onRedo}
           disabled={!state.canRedo}
+          title="Redo (Ctrl+Shift+Z)"
           data-testid="btn-redo"
         >
           Redo
-        </button>
-      </div>
-
-      <div className="toolbar-group">
-        <button
-          className="toolbar-btn toolbar-btn-danger"
-          onClick={onClear}
-          data-testid="btn-clear"
-        >
-          Clear
         </button>
       </div>
     </div>

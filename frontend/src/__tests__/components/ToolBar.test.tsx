@@ -9,6 +9,8 @@ const defaultState = {
   brushColor: '#000000',
   canUndo: true,
   canRedo: true,
+  layers: [{ id: 'layer-1', name: 'Layer 1', visible: true }],
+  activeLayerId: 'layer-1',
 };
 
 const defaultProps = {
@@ -18,7 +20,6 @@ const defaultProps = {
   onSetBrushColor: vi.fn(),
   onUndo: vi.fn(),
   onRedo: vi.fn(),
-  onClear: vi.fn(),
 };
 
 describe('ToolBar', () => {
@@ -29,7 +30,25 @@ describe('ToolBar', () => {
     expect(screen.getByText('Eraser')).toBeInTheDocument();
     expect(screen.getByText('Undo')).toBeInTheDocument();
     expect(screen.getByText('Redo')).toBeInTheDocument();
-    expect(screen.getByText('Clear')).toBeInTheDocument();
+  });
+
+  it('does not render a Clear button', () => {
+    render(<ToolBar {...defaultProps} />);
+
+    expect(screen.queryByText('Clear')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('btn-clear')).not.toBeInTheDocument();
+  });
+
+  it('advertises the keyboard shortcut for each tool', () => {
+    render(<ToolBar {...defaultProps} />);
+
+    expect(screen.getByTestId('tool-brush')).toHaveAttribute('title', 'Brush (B)');
+    expect(screen.getByTestId('tool-eraser')).toHaveAttribute('title', 'Eraser (E)');
+    expect(screen.getByTestId('btn-undo')).toHaveAttribute('title', 'Undo (Ctrl+Z)');
+    expect(screen.getByTestId('btn-redo')).toHaveAttribute(
+      'title',
+      'Redo (Ctrl+Shift+Z)'
+    );
   });
 
   it('renders brush size preset buttons', () => {
@@ -103,14 +122,6 @@ describe('ToolBar', () => {
     expect(onRedo).toHaveBeenCalled();
   });
 
-  it('calls onClear when Clear is clicked', async () => {
-    const user = userEvent.setup();
-    const onClear = vi.fn();
-    render(<ToolBar {...defaultProps} onClear={onClear} />);
-
-    await user.click(screen.getByText('Clear'));
-    expect(onClear).toHaveBeenCalled();
-  });
 
   it('disables Undo when canUndo is false', () => {
     render(

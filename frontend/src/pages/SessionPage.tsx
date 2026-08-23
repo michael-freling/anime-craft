@@ -1,9 +1,11 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useCallback } from "react";
 import { useDrawingCanvas } from "../hooks/useDrawingCanvas";
+import { useDrawingShortcuts } from "../hooks/useDrawingShortcuts";
 import { SessionProvider, useSession } from "../contexts/SessionContext";
 import DrawingCanvas from "../components/drawing/DrawingCanvas";
 import ToolBar from "../components/drawing/ToolBar";
+import LayerPanel from "../components/drawing/LayerPanel";
 import SessionControls from "../components/session/SessionControls";
 import ReferenceImageViewer from "../components/session/ReferenceImageViewer";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
@@ -16,16 +18,23 @@ function SessionPageInner() {
   const navigate = useNavigate();
   const { state: sessionState, dispatch } = useSession();
   const {
-    canvasRef,
+    surfaceRef,
+    registerLayerCanvas,
     state: drawingState,
     setTool,
     setBrushSize,
     setBrushColor,
     undo,
     redo,
-    clear,
+    addLayer,
+    removeLayer,
+    selectLayer,
+    toggleLayerVisibility,
+    moveLayer,
     exportPNG,
   } = useDrawingCanvas();
+
+  useDrawingShortcuts({ onSetTool: setTool, onUndo: undo, onRedo: redo });
 
   useEffect(() => {
     if (!id) return;
@@ -94,9 +103,24 @@ function SessionPageInner() {
             onSetBrushColor={setBrushColor}
             onUndo={undo}
             onRedo={redo}
-            onClear={clear}
           />
-          <DrawingCanvas canvasRef={canvasRef} tool={drawingState.tool} />
+          <div className="canvas-with-layers">
+            <DrawingCanvas
+              surfaceRef={surfaceRef}
+              registerLayerCanvas={registerLayerCanvas}
+              layers={drawingState.layers}
+              tool={drawingState.tool}
+            />
+            <LayerPanel
+              layers={drawingState.layers}
+              activeLayerId={drawingState.activeLayerId}
+              onAddLayer={addLayer}
+              onRemoveLayer={removeLayer}
+              onSelectLayer={selectLayer}
+              onToggleVisibility={toggleLayerVisibility}
+              onMoveLayer={moveLayer}
+            />
+          </div>
           <SessionControls
             elapsedSeconds={sessionState.elapsedSeconds}
             onSubmit={handleSubmit}
