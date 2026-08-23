@@ -8,12 +8,14 @@ Implements InferenceService with three RPCs:
 Run with: python -m animecraft_inference.server
 """
 
+import argparse
 import logging
 import signal
 import sys
 import threading
 from collections.abc import Iterator
 from concurrent import futures
+from dataclasses import replace
 
 import grpc
 
@@ -256,9 +258,42 @@ def serve(config: Config) -> None:
     logger.info("Server shut down.")
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="animecraft-inference",
+        description="Anime Craft inference service.",
+    )
+    parser.add_argument(
+        "--host",
+        default=None,
+        help=(
+            "Address to bind (default: INFERENCE_GRPC_HOST, or localhost). "
+            "Use 0.0.0.0 to accept connections from Windows when the service "
+            "runs under WSL."
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port to listen on (default: INFERENCE_GRPC_PORT, or 50051).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
     """Entry point for ``python -m animecraft_inference.server``."""
+    args = _parse_args(argv)
     config = load_config()
+
+    overrides = {}
+    if args.host is not None:
+        overrides["grpc_host"] = args.host
+    if args.port is not None:
+        overrides["grpc_port"] = args.port
+    if overrides:
+        config = replace(config, **overrides)
+
     serve(config)
 
 

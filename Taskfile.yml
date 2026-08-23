@@ -81,6 +81,22 @@ tasks:
     cmds:
       - pdm run serve
 
+  inference:serve:wsl:
+    desc: Start the inference service so a Windows-side app can reach it
+    summary: |
+      Binds 0.0.0.0 instead of localhost. WSL2's localhost relay forwards
+      Windows connections to the VM's interface, so a service bound only to
+      127.0.0.1 inside WSL is refused when the Windows exe dials
+      localhost:50051.
+    dir: inference
+    deps:
+      - inference:install
+      - inference:protoc
+    vars:
+      INFERENCE_PORT: 50051
+    cmds:
+      - pdm run serve --host 0.0.0.0 --port {{.INFERENCE_PORT}}
+
   build:wsl:
     desc: Cross-compile the Windows exe from WSL into bin/anime-craft.exe
     cmds:
@@ -171,7 +187,7 @@ tasks:
       # Kill any stale inference service processes before starting a new one.
       - cmd: pkill -f 'animecraft_inference.server' || true
       # Start the Python inference service in the background.
-      - cmd: cd inference && pdm run serve --port {{.INFERENCE_PORT}} &
+      - cmd: cd inference && pdm run serve --host 0.0.0.0 --port {{.INFERENCE_PORT}} &
         ignore_error: true
       - |
         echo ""
