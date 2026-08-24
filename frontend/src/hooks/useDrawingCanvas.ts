@@ -75,7 +75,6 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
   // Pixels waiting for their layer's canvas to mount — undoing a delete puts
   // the layer back one render before its canvas exists.
   const pendingRestoreRef = useRef(new Map<string, ImageData>());
-  const layerCounterRef = useRef(1);
 
   const isDrawing = useRef(false);
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
@@ -387,10 +386,20 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
 
   const addLayer = useCallback(() => {
     const before = currentLayerState();
-    layerCounterRef.current += 1;
+
+    // Number from the layers that exist right now, so undoing an add and
+    // adding again gives back the same number instead of drifting upward.
+    // Taking the max rather than the count keeps ids unique when a layer
+    // below the top has been deleted.
+    const highest = before.layers.reduce((max, layer) => {
+      const n = Number.parseInt(layer.id.slice("layer-".length), 10);
+      return Number.isFinite(n) && n > max ? n : max;
+    }, 0);
+    const number = highest + 1;
+
     const layer: Layer = {
-      id: `layer-${layerCounterRef.current}`,
-      name: `Layer ${layerCounterRef.current}`,
+      id: `layer-${number}`,
+      name: `Layer ${number}`,
       visible: true,
     };
     const after: LayerState = {

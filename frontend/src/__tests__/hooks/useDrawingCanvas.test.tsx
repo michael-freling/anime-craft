@@ -185,17 +185,47 @@ describe('useDrawingCanvas undo of layer changes', () => {
     expect(result.current.state.layers.map((l) => l.id)).toEqual(['layer-1']);
   });
 
-  it('drops redoable changes once a new change is made', () => {
+  it('reuses the layer number after undoing an add', () => {
     const { result } = renderHook(() => useDrawingCanvas());
 
     act(() => result.current.addLayer());
     act(() => result.current.undo());
     expect(result.current.state.canRedo).toBe(true);
 
+    // Adding again gives back Layer 2, not Layer 3 — undo rolls the
+    // numbering back with the stack.
     act(() => result.current.addLayer());
     expect(result.current.state.canRedo).toBe(false);
     expect(result.current.state.layers.map((l) => l.id)).toEqual([
       'layer-1',
+      'layer-2',
+    ]);
+    expect(result.current.state.layers.map((l) => l.name)).toEqual([
+      'Layer 1',
+      'Layer 2',
+    ]);
+  });
+
+  it('does not reuse the id of a layer that is still undo-restorable', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.addLayer()); // layer-2
+    act(() => result.current.addLayer()); // layer-3
+
+    // Deleting from the middle leaves layer-3 on top, so the next layer is 4;
+    // reusing 2 would collide with the layer undo can bring back.
+    act(() => result.current.removeLayer('layer-2'));
+    act(() => result.current.addLayer());
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-3',
+      'layer-4',
+    ]);
+
+    act(() => result.current.undo()); // undo the add
+    act(() => result.current.undo()); // undo the delete
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
       'layer-3',
     ]);
   });
