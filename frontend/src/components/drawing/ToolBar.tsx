@@ -1,19 +1,12 @@
-interface DrawingState {
-  tool: "brush" | "eraser";
-  brushSize: number;
-  brushColor: string;
-  canUndo: boolean;
-  canRedo: boolean;
-}
+import type { DrawingState, Tool } from "../../hooks/useDrawingCanvas";
 
 interface ToolBarProps {
   state: DrawingState;
-  onSetTool: (tool: "brush" | "eraser") => void;
+  onSetTool: (tool: Tool) => void;
   onSetBrushSize: (size: number) => void;
   onSetBrushColor: (color: string) => void;
   onUndo: () => void;
   onRedo: () => void;
-  onClear: () => void;
 }
 
 const BRUSH_SIZES = [
@@ -21,6 +14,13 @@ const BRUSH_SIZES = [
   { label: "Medium", value: 5 },
   { label: "Large", value: 10 },
 ];
+
+// Shown on the buttons themselves — a shortcut nobody can see is a shortcut
+// nobody learns. Mac keyboards get the symbols they actually have.
+const isMac =
+  typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent);
+const UNDO_KEY = isMac ? "\u2318Z" : "Ctrl+Z";
+const REDO_KEY = isMac ? "\u21e7\u2318Z" : "Ctrl+Shift+Z";
 
 const COLOR_PALETTE = [
   { label: "Black", value: "#000000" },
@@ -38,7 +38,6 @@ function ToolBar({
   onSetBrushColor,
   onUndo,
   onRedo,
-  onClear,
 }: ToolBarProps) {
   return (
     <div className="toolbar" data-testid="toolbar">
@@ -46,16 +45,20 @@ function ToolBar({
         <button
           className={`toolbar-btn ${state.tool === "brush" ? "active" : ""}`}
           onClick={() => onSetTool("brush")}
+          title="Brush (B)"
           data-testid="tool-brush"
         >
           Brush
+          <kbd className="toolbar-key">B</kbd>
         </button>
         <button
           className={`toolbar-btn ${state.tool === "eraser" ? "active" : ""}`}
           onClick={() => onSetTool("eraser")}
+          title="Eraser (E)"
           data-testid="tool-eraser"
         >
           Eraser
+          <kbd className="toolbar-key">E</kbd>
         </button>
       </div>
 
@@ -90,27 +93,21 @@ function ToolBar({
           className="toolbar-btn"
           onClick={onUndo}
           disabled={!state.canUndo}
+          title={`Undo (${UNDO_KEY})`}
           data-testid="btn-undo"
         >
           Undo
+          <kbd className="toolbar-key">{UNDO_KEY}</kbd>
         </button>
         <button
           className="toolbar-btn"
           onClick={onRedo}
           disabled={!state.canRedo}
+          title={`Redo (${REDO_KEY})`}
           data-testid="btn-redo"
         >
           Redo
-        </button>
-      </div>
-
-      <div className="toolbar-group">
-        <button
-          className="toolbar-btn toolbar-btn-danger"
-          onClick={onClear}
-          data-testid="btn-clear"
-        >
-          Clear
+          <kbd className="toolbar-key">{REDO_KEY}</kbd>
         </button>
       </div>
     </div>

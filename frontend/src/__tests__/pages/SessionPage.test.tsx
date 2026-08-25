@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SessionPage from '../../pages/SessionPage';
@@ -78,6 +79,43 @@ describe('SessionPage', () => {
     // Toolbar and session controls are always rendered, even during loading
     expect(screen.getByTestId('toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('session-controls')).toBeInTheDocument();
+  });
+
+  it('shows the layer panel with a starting layer', () => {
+    renderSessionPage();
+
+    expect(screen.getByTestId('layer-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('layer-item-layer-1')).toHaveClass('active');
+    expect(screen.getByTestId('layer-canvas-layer-1')).toBeInTheDocument();
+  });
+
+  it('adds a layer and draws on it', async () => {
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await user.click(screen.getByTestId('layer-add'));
+
+    expect(screen.getByTestId('layer-canvas-layer-2')).toBeInTheDocument();
+    // The new layer becomes the one strokes land on.
+    expect(screen.getByTestId('layer-item-layer-2')).toHaveClass('active');
+    expect(screen.getByTestId('layer-item-layer-1')).not.toHaveClass('active');
+  });
+
+  it('switches tools with the keyboard', async () => {
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await user.keyboard('e');
+    expect(screen.getByTestId('tool-eraser')).toHaveClass('active');
+
+    await user.keyboard('b');
+    expect(screen.getByTestId('tool-brush')).toHaveClass('active');
+  });
+
+  it('no longer offers a Clear button', () => {
+    renderSessionPage();
+
+    expect(screen.queryByTestId('btn-clear')).not.toBeInTheDocument();
   });
 
   it('renders session page container', () => {
