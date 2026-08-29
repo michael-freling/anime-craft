@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
@@ -13,6 +14,18 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
+
+// MaxMessageBytes is how large a request or response may be. gRPC defaults to
+// 4MB, which a request carrying two images goes past as soon as the reference
+// is a photograph rather than a small line drawing — a 4.4MB request was being
+// refused outright. The service runs on the loopback interface beside the app,
+// so the ceiling can be generous; it is here to catch something absurd, not to
+// ration bandwidth.
+//
+// The Python side is configured with the same number (see
+// inference/src/animecraft_inference/server.py); both have to agree, because
+// whichever is lower is the one that refuses.
+const MaxMessageBytes = 32 * 1024 * 1024
 
 // Client wraps the gRPC connection to the Python inference service.
 // It implements bff.LineArtExtractor and bff.FeedbackGenerator.
@@ -25,6 +38,10 @@ type Client struct {
 func New(ctx context.Context, addr string) (*Client, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(MaxMessageBytes),
+			grpc.MaxCallSendMsgSize(MaxMessageBytes),
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("grpc dial %s: %w", addr, err)
@@ -72,7 +89,7 @@ func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, 
 		}
 
 		code := status.Code(err)
-		if (code != codes.Unavailable && code != codes.ResourceExhausted) || time.Now().After(deadline) {
+		if !worthRetrying(code, err) || time.Now().After(deadline) {
 			return nil, err
 		}
 
@@ -87,6 +104,25 @@ func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, 
 			backoff *= 2
 		}
 	}
+}
+
+// worthRetrying says whether waiting could plausibly change the answer.
+//
+// ResourceExhausted carries two very different meanings here. The service
+// sends it when another feedback request is already running, which passes.
+// gRPC's transport sends it when a message is over the size limit, which never
+// will — and retrying that turned a request that could not succeed into two
+// minutes of backing off and trying again, which is how this was noticed.
+//
+// The only thing separating them is the message text, since they share a code.
+func worthRetrying(code codes.Code, err error) bool {
+	if code == codes.Unavailable {
+		return true
+	}
+	if code != codes.ResourceExhausted {
+		return false
+	}
+	return !strings.Contains(status.Convert(err).Message(), "larger than max")
 }
 
 func (c *Client) doGenerateFeedback(ctx context.Context, req *pb.GenerateFeedbackRequest) (*pb.FeedbackResult, error) {

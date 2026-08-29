@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"strings"
@@ -10,8 +11,12 @@ import (
 	"time"
 
 	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -137,7 +142,12 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 	t.Helper()
 
 	listener := bufconn.Listen(bufSize)
-	grpcServer := grpc.NewServer()
+	// Configured the way the real pair is, so the tests exercise the limits
+	// the app actually runs with rather than gRPC's defaults.
+	grpcServer := grpc.NewServer(
+		grpc.MaxRecvMsgSize(MaxMessageBytes),
+		grpc.MaxSendMsgSize(MaxMessageBytes),
+	)
 	pb.RegisterInferenceServiceServer(grpcServer, srv)
 
 	serveErrCh := make(chan error, 1)
@@ -153,6 +163,10 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 		"passthrough:///bufnet",
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(MaxMessageBytes),
+			grpc.MaxCallSendMsgSize(MaxMessageBytes),
+		),
 	)
 	if err != nil {
 		grpcServer.Stop()
@@ -385,4 +399,94 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// ResourceExhausted means two different things on this connection: the service
+// turning away a second concurrent feedback request, which passes, and gRPC
+// refusing a message over the size limit, which never will. Retrying the
+// second turned a request that could not succeed into two minutes of backoff.
+func TestWorthRetrying(t *testing.T) {
+	tests := []struct {
+		name  string
+		err   error
+		retry bool
+	}{
+		{
+			name:  "the service is still starting up",
+			err:   status.Error(codes.Unavailable, "model is loading"),
+			retry: true,
+		},
+		{
+			name:  "another feedback request is already running",
+			err:   status.Error(codes.ResourceExhausted, "Another feedback request is already in progress. Please wait."),
+			retry: true,
+		},
+		{
+			name:  "the message is too large for the service",
+			err:   status.Error(codes.ResourceExhausted, "SERVER: Received message larger than max (4425484 vs. 4194304)"),
+			retry: false,
+		},
+		{
+			name:  "the response is too large for us",
+			err:   status.Error(codes.ResourceExhausted, "grpc: received message larger than max (5000000 vs. 4194304)"),
+			retry: false,
+		},
+		{
+			name:  "the request was rejected outright",
+			err:   status.Error(codes.InvalidArgument, "drawing_png must not be empty."),
+			retry: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.retry, worthRetrying(status.Code(test.err), test.err))
+		})
+	}
+}
+
+// Both ends have to agree on the ceiling, because whichever is lower is the
+// one that refuses. This pins the Go half; the Python half is pinned in
+// inference/tests/test_server.py.
+func TestMaxMessageBytes(t *testing.T) {
+	assert.Equal(t, 32*1024*1024, MaxMessageBytes,
+		"changing this means changing MAX_MESSAGE_BYTES in the inference service too")
+}
+
+// The reported failure: a request carrying a photographic reference and a
+// drawing came to 4.4MB and was refused by gRPC's 4MB default.
+func TestGenerateFeedback_CarriesImagesPastTheOldFourMegabyteCeiling(t *testing.T) {
+	srv := &fakeInferenceServer{
+		feedbackResult: &pb.FeedbackResult{OverallScore: 70, Summary: "ok"},
+	}
+	client := startTestServer(t, srv)
+
+	// Comfortably past the old ceiling, and the size that was being refused.
+	reference := bytes.Repeat([]byte{0xA5}, 4_425_484)
+	drawing := bytes.Repeat([]byte{0x5A}, 512*1024)
+
+	result, err := client.GenerateFeedback(context.Background(), reference, drawing, "line_work")
+
+	require.NoError(t, err)
+	assert.Equal(t, int32(70), result.GetOverallScore())
+
+	srv.feedbackReceivedMu.Lock()
+	received := srv.feedbackReceivedReq
+	srv.feedbackReceivedMu.Unlock()
+	require.NotNil(t, received)
+	assert.Len(t, received.GetReferenceLineArtPng(), len(reference), "the whole reference arrived")
+	assert.Len(t, received.GetDrawingPng(), len(drawing), "the whole drawing arrived")
+}
+
+// And a response the same size comes back, since the limit applies both ways.
+func TestExtractLineArt_ReturnsImagesPastTheOldCeiling(t *testing.T) {
+	srv := &fakeInferenceServer{
+		extractResponse: bytes.Repeat([]byte{0x11}, 6*1024*1024),
+	}
+	client := startTestServer(t, srv)
+
+	lineArt, err := client.Extract(bytes.Repeat([]byte{0x22}, 5*1024*1024))
+
+	require.NoError(t, err)
+	assert.Len(t, lineArt, 6*1024*1024)
 }
