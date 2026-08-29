@@ -37,6 +37,32 @@ func (m *mockLineArtExtractor) Extract(pngData []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// countingImageComparer records how often the inference service is asked for
+// a heatmap, so a test can show that revisiting a result does not ask again.
+type countingImageComparer struct{ calls int }
+
+func (c *countingImageComparer) CompareImages(_ context.Context, _ []byte, _ []byte) ([]byte, error) {
+	c.calls++
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 200, A: 255})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// countingLineArtExtractor is mockLineArtExtractor with a call count.
+type countingLineArtExtractor struct {
+	mockLineArtExtractor
+	calls int
+}
+
+func (c *countingLineArtExtractor) Extract(pngData []byte) ([]byte, error) {
+	c.calls++
+	return c.mockLineArtExtractor.Extract(pngData)
+}
+
 // createTestPNGFile writes a small valid PNG file to the given path.
 func createTestPNGFile(t *testing.T, path string) {
 	t.Helper()
@@ -379,4 +405,100 @@ func TestFeedbackService_RequestFeedback_WithoutLineArt(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, feedback.ID)
 	assert.Empty(t, feedback.ReferenceLineArt, "ReferenceLineArt should be empty when extractor is nil")
+}
+
+// The scores go to the database, but the pictures the analysis produces used
+// to be rebuilt by the inference service on every visit — which is least
+// likely to be running exactly when an old result is being looked at.
+func TestFeedbackService_KeepsTheAnalysisImages(t *testing.T) {
+	db := testDB(t)
+	feedbackRepo := repository.NewFeedbackRepository(db)
+	sessionRepo := repository.NewSessionRepository(db)
+	drawingRepo := repository.NewDrawingRepository(db)
+	refRepo := repository.NewReferenceRepository(db)
+
+	dataDir := t.TempDir()
+	extractor := &countingLineArtExtractor{}
+	comparer := &countingImageComparer{}
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir,
+		extractor, &mockFeedbackGenerator{}, comparer)
+
+	createTestPNGFile(t, filepath.Join(dataDir, "references", "ref-001.png"))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
+	require.NoError(t, err)
+	require.NoError(t, sessionRepo.Create(model.Session{
+		ID: "sess-keep", ReferenceImageID: "ref-001", ExerciseMode: "line_work",
+		Status: "completed", StartedAt: time.Now(),
+	}))
+	drawingPath := filepath.Join(dataDir, "drawings", "sess-keep.png")
+	createTestPNGFile(t, drawingPath)
+	require.NoError(t, drawingRepo.Create(model.Drawing{
+		ID: "draw-keep", SessionID: "sess-keep", FilePath: drawingPath, CreatedAt: time.Now(),
+	}))
+
+	first, err := svc.RequestFeedback("sess-keep")
+	require.NoError(t, err)
+	require.Contains(t, first.ReferenceLineArt, "data:image/png;base64,")
+	require.Contains(t, first.ComparisonHeatmap, "data:image/png;base64,")
+
+	// Both pictures are on disk next to the drawing.
+	assert.FileExists(t, filepath.Join(dataDir, "feedback", "sess-keep", referenceLineArtFile))
+	assert.FileExists(t, filepath.Join(dataDir, "feedback", "sess-keep", comparisonHeatmapFile))
+
+	extractorCalls, comparerCalls := extractor.calls, comparer.calls
+
+	// Looking at the result again returns the same pictures without asking
+	// the inference service for them a second time.
+	again, err := svc.RequestFeedback("sess-keep")
+	require.NoError(t, err)
+	assert.Equal(t, first.ReferenceLineArt, again.ReferenceLineArt)
+	assert.Equal(t, first.ComparisonHeatmap, again.ComparisonHeatmap)
+	assert.Equal(t, extractorCalls, extractor.calls, "the line art is not extracted again")
+	assert.Equal(t, comparerCalls, comparer.calls, "the heatmap is not rebuilt")
+}
+
+// A result saved before the pictures were kept must still open, rebuilding
+// them once so the next visit is free.
+func TestFeedbackService_RebuildsAnalysisImagesOnceForOlderResults(t *testing.T) {
+	db := testDB(t)
+	feedbackRepo := repository.NewFeedbackRepository(db)
+	sessionRepo := repository.NewSessionRepository(db)
+	drawingRepo := repository.NewDrawingRepository(db)
+	refRepo := repository.NewReferenceRepository(db)
+
+	dataDir := t.TempDir()
+	extractor := &countingLineArtExtractor{}
+	comparer := &countingImageComparer{}
+	svc := NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir,
+		extractor, &mockFeedbackGenerator{}, comparer)
+
+	createTestPNGFile(t, filepath.Join(dataDir, "references", "ref-001.png"))
+	_, err := db.Exec("UPDATE reference_images SET file_path = ? WHERE id = ?", "references/ref-001.png", "ref-001")
+	require.NoError(t, err)
+	require.NoError(t, sessionRepo.Create(model.Session{
+		ID: "sess-old", ReferenceImageID: "ref-001", ExerciseMode: "line_work",
+		Status: "completed", StartedAt: time.Now(),
+	}))
+	drawingPath := filepath.Join(dataDir, "drawings", "sess-old.png")
+	createTestPNGFile(t, drawingPath)
+	require.NoError(t, drawingRepo.Create(model.Drawing{
+		ID: "draw-old", SessionID: "sess-old", FilePath: drawingPath, CreatedAt: time.Now(),
+	}))
+	// Feedback recorded by an older version, with no pictures kept for it.
+	require.NoError(t, feedbackRepo.Create(model.Feedback{
+		ID: "fb-old", SessionID: "sess-old", OverallScore: 64,
+		Summary: "An earlier attempt.", CreatedAt: time.Now(),
+	}))
+
+	restored, err := svc.RequestFeedback("sess-old")
+	require.NoError(t, err)
+	assert.Equal(t, 64, restored.OverallScore, "the stored result is not regenerated")
+	assert.Contains(t, restored.ReferenceLineArt, "data:image/png;base64,")
+	assert.Equal(t, 1, extractor.calls)
+
+	// Rebuilt once, then kept.
+	again, err := svc.RequestFeedback("sess-old")
+	require.NoError(t, err)
+	assert.Equal(t, restored.ReferenceLineArt, again.ReferenceLineArt)
+	assert.Equal(t, 1, extractor.calls, "rebuilt once, not on every visit")
 }

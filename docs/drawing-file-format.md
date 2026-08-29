@@ -195,6 +195,26 @@ undo scope changes, artwork does not.
 The store holds the same line, refusing a save that would rewrite anything
 below it, so a stale editor cannot cross it either.
 
+### Looking back at a result
+
+Deciding whether to pick a drawing up again usually means reading what the last
+attempt scored, so each row on the home screen carries the score of the most
+recent graded attempt and a **Result** button that opens its feedback.
+
+That attempt is normally an earlier link in the chain than the session being
+listed — the graded one handed its drawing on — so the row walks back the
+continuation chain to find it. Without that, carrying on with a drawing would
+put its own result out of reach.
+
+The whole analysis is kept, not just the numbers. The scores and the written
+feedback are in the database; the two images it produces — the reference line
+art and the comparison heatmap — are written to
+`<data>/feedback/<sessionID>/`. They used to be rebuilt by calling the
+inference service on every visit, which is least likely to be running exactly
+when an old result is being looked at, leaving the artist with the numbers and
+none of the pictures. A result recorded before they were kept rebuilds them
+once, on the next visit, and keeps them from then on.
+
 ### Previews
 
 Every checkpoint already writes `Thumbnails/thumbnail.png`, so the home screen

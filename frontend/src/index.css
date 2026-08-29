@@ -994,9 +994,14 @@ body {
   justify-content: flex-end;
 }
 /* Equal widths so the buttons line up down the list even though one row says
-   "Resume" and the next says "Keep drawing". */
+   "Resume" and the next says "Keep drawing". Result and Delete are narrower:
+   they are the same words on every row, so they already line up. */
 .resume-actions .session-btn {
   min-width: 6.5rem;
+}
+.resume-actions .session-btn-secondary,
+.resume-actions .session-btn-discard {
+  min-width: 4.5rem;
 }
 
 .resume-status {

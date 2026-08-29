@@ -170,7 +170,7 @@ internal/
 - `EndSession(sessionID string) -> Session` -- Marks session as completed, records end time.
 - `GetSession(sessionID string) -> Session` -- Retrieves a single session.
 - `ListSessions(limit int, offset int) -> []Session` -- Retrieves session history with pagination.
-- `ListResumableSessions(limit int) -> []ResumableSession` -- Saved drawings the home screen offers to pick back up, submitted ones included, with what their autosave last wrote.
+- `ListResumableSessions(limit int) -> []ResumableSession` -- Saved drawings the home screen offers to pick back up, submitted ones included, with what their autosave last wrote and what the most recent graded attempt on each scored.
 - `DiscardSession(sessionID string) -> error` -- Marks an unfinished session abandoned so it stops appearing as resumable.
 
 **DrawingService** -- Handles saving and retrieving user drawings, both the autosaved editable document and the flattened PNG a finished session is graded from.
@@ -247,6 +247,9 @@ Directory structure within the data directory:
 ```
 anime-craft/
   anime-craft.db          -- SQLite database
+  feedback/
+    <sessionID>/          -- The images the analysis produced, kept so a
+                          -- result opens without re-running inference
   drawings/
     <sessionID>.png       -- Flattened drawing submitted for feedback
     <sessionID>/

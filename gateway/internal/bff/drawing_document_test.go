@@ -21,6 +21,7 @@ import (
 type drawingFixture struct {
 	svc         *DrawingService
 	sessionSvc  *SessionService
+	db          *repository.DB
 	dataDir     string
 	sessionID   string
 	referenceID string
@@ -54,7 +55,8 @@ func newDrawingFixture(t *testing.T) drawingFixture {
 
 	return drawingFixture{
 		svc:         svc,
-		sessionSvc:  NewSessionService(sessionRepo),
+		sessionSvc:  NewSessionService(sessionRepo, repository.NewFeedbackRepository(db)),
+		db:          db,
 		dataDir:     dataDir,
 		sessionID:   "sess-900",
 		referenceID: "ref-900",
@@ -76,7 +78,8 @@ func newEmptyDrawingFixture(t *testing.T) drawingFixture {
 			repository.NewReferenceRepository(db),
 			dataDir,
 		),
-		sessionSvc: NewSessionService(sessionRepo),
+		sessionSvc: NewSessionService(sessionRepo, repository.NewFeedbackRepository(db)),
+		db:         db,
 		dataDir:    dataDir,
 	}
 }
@@ -719,4 +722,70 @@ func TestDrawingService_OpenDrawingDocument_ThenKeepsDrawing(t *testing.T) {
 	scene := loadScene(t, f.svc, f.sessionID)
 	assert.Len(t, scene.Materialize().Strokes["layer-1"], 1, "undo took back only this sitting's stroke")
 	assert.Equal(t, 1, scene.BaseIndex)
+}
+
+// The graded attempt hands its drawing on, so the result the artist wants to
+// look at before picking the drawing up again belongs to an earlier link in
+// the chain than the session being listed.
+func TestSessionService_ListResumableSessions_CarriesTheLastResult(t *testing.T) {
+	f := newDrawingFixture(t)
+	feedbackRepo := repository.NewFeedbackRepository(f.db)
+
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+
+	// Nothing graded yet.
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1)
+	assert.Empty(t, resumable[0].LastResultSessionID)
+	assert.Zero(t, resumable[0].ResultCount)
+
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+	require.NoError(t, feedbackRepo.Create(model.Feedback{
+		ID: "fb-1", SessionID: f.sessionID, OverallScore: 72,
+		Summary: "A good first go.", CreatedAt: time.Now(),
+	}))
+
+	// Submitted and graded: the result is on its own row.
+	resumable, err = f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1)
+	assert.Equal(t, f.sessionID, resumable[0].LastResultSessionID)
+	assert.Equal(t, 72, resumable[0].LastScore)
+	assert.Equal(t, 1, resumable[0].ResultCount)
+
+	// Carrying on moves the drawing to a new session, and the result stays
+	// reachable from the row that now holds it.
+	second, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	resumable, err = f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1)
+	assert.Equal(t, second.ID, resumable[0].ID)
+	assert.Equal(t, f.sessionID, resumable[0].LastResultSessionID, "the result of the attempt it came from")
+	assert.Equal(t, 72, resumable[0].LastScore)
+	assert.Equal(t, 1, resumable[0].ResultCount)
+
+	// A second graded attempt becomes the one shown, and both are counted.
+	_, err = f.svc.SaveDrawingOperations(second.ID, saveRequest(2, 2, strokeOp("s2", 5, 5, 6, 6)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(second.ID)
+	require.NoError(t, err)
+	require.NoError(t, feedbackRepo.Create(model.Feedback{
+		ID: "fb-2", SessionID: second.ID, OverallScore: 81,
+		Summary: "Better lines.", CreatedAt: time.Now(),
+	}))
+	third, err := f.svc.ResumeDrawing(second.ID)
+	require.NoError(t, err)
+
+	resumable, err = f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1)
+	assert.Equal(t, third.ID, resumable[0].ID)
+	assert.Equal(t, second.ID, resumable[0].LastResultSessionID)
+	assert.Equal(t, 81, resumable[0].LastScore)
+	assert.Equal(t, 2, resumable[0].ResultCount, "both attempts counted")
 }

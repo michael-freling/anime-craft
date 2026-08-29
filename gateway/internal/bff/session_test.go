@@ -18,7 +18,7 @@ func testDB(t *testing.T) *repository.DB {
 
 func TestSessionService_StartSession_ValidModes(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	session, err := svc.StartSession("line_work", "ref-001")
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestSessionService_StartSession_ValidModes(t *testing.T) {
 
 func TestSessionService_StartSession_InvalidMode(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	_, err := svc.StartSession("invalid_mode", "ref-001")
 	require.Error(t, err)
@@ -39,7 +39,7 @@ func TestSessionService_StartSession_InvalidMode(t *testing.T) {
 
 func TestSessionService_EndSession(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	session, err := svc.StartSession("line_work", "ref-001")
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestSessionService_EndSession(t *testing.T) {
 
 func TestSessionService_EndSession_AlreadyCompleted(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	session, err := svc.StartSession("line_work", "ref-001")
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestSessionService_EndSession_AlreadyCompleted(t *testing.T) {
 
 func TestSessionService_EndSession_NotFound(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	_, err := svc.EndSession("nonexistent")
 	require.Error(t, err)
@@ -76,7 +76,7 @@ func TestSessionService_EndSession_NotFound(t *testing.T) {
 
 func TestSessionService_ListSessions(t *testing.T) {
 	db := testDB(t)
-	svc := NewSessionService(repository.NewSessionRepository(db))
+	svc := NewSessionService(repository.NewSessionRepository(db), repository.NewFeedbackRepository(db))
 
 	for range 3 {
 		_, err := svc.StartSession("line_work", "ref-001")

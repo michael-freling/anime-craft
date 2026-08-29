@@ -138,3 +138,19 @@ func (r *SessionRepository) ContinuedBy(sessionID string) (string, error) {
 	}
 	return next.String, nil
 }
+
+// PreviousInChain returns the session that handed its drawing to this one, or
+// an empty string when this is where the drawing started.
+func (r *SessionRepository) PreviousInChain(sessionID string) (string, error) {
+	var previous string
+	err := r.db.QueryRow(
+		"SELECT id FROM sessions WHERE continued_by_session_id = ?", sessionID,
+	).Scan(&previous)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get previous session in chain: %w", err)
+	}
+	return previous, nil
+}

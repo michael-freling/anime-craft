@@ -12,10 +12,13 @@ import (
 
 type SessionService struct {
 	repo *repository.SessionRepository
+	// feedbackRepo is only read from, to tell the home screen what a drawing
+	// last scored. It may be nil.
+	feedbackRepo *repository.FeedbackRepository
 }
 
-func NewSessionService(repo *repository.SessionRepository) *SessionService {
-	return &SessionService{repo: repo}
+func NewSessionService(repo *repository.SessionRepository, feedbackRepo *repository.FeedbackRepository) *SessionService {
+	return &SessionService{repo: repo, feedbackRepo: feedbackRepo}
 }
 
 func (s *SessionService) StartSession(mode string, referenceID string) (model.Session, error) {
@@ -94,7 +97,43 @@ func (s *SessionService) ListResumableSessions(limit int) ([]model.ResumableSess
 		slog.Error("failed to list resumable sessions", "method", "ListResumableSessions", "limit", limit, "error", err)
 		return nil, err
 	}
+	for i := range sessions {
+		s.attachLastResult(&sessions[i])
+	}
 	return sessions, nil
+}
+
+// attachLastResult finds the most recent graded attempt on a drawing so the
+// home screen can show what it scored and link to the feedback.
+//
+// A drawing carried on with moves into a new session, so the attempt that was
+// graded is usually an earlier link in the chain rather than the session being
+// listed. Walking back is what makes a past result reachable at the moment it
+// is wanted — deciding whether to pick the drawing up again.
+func (s *SessionService) attachLastResult(session *model.ResumableSession) {
+	if s.feedbackRepo == nil {
+		return
+	}
+
+	// A chain is a handful of attempts; the bound is only there so a cycle
+	// cannot spin.
+	const maxChain = 50
+	for id, steps := session.ID, 0; id != "" && steps < maxChain; steps++ {
+		if feedback, err := s.feedbackRepo.GetBySessionID(id); err == nil && (feedback.OverallScore > 0 || feedback.Summary != "") {
+			if session.LastResultSessionID == "" {
+				session.LastResultSessionID = id
+				session.LastScore = feedback.OverallScore
+			}
+			session.ResultCount++
+		}
+
+		previous, err := s.repo.PreviousInChain(id)
+		if err != nil {
+			slog.Error("failed to walk back the drawing's attempts", "method", "ListResumableSessions", "sessionID", id, "error", err)
+			return
+		}
+		id = previous
+	}
 }
 
 // DiscardSession marks an unfinished session abandoned so it stops showing up

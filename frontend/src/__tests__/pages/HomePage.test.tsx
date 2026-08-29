@@ -185,6 +185,9 @@ describe('HomePage', () => {
       startedAt: new Date().toISOString(),
       lastSavedAt: new Date().toISOString(),
       operationCount: 12,
+      lastResultSessionId: '',
+      lastScore: 0,
+      resultCount: 0,
       ...overrides,
     };
   }
@@ -385,5 +388,83 @@ describe('HomePage', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
     });
+  });
+
+  // What a drawing last scored is the thing worth knowing before deciding to
+  // pick it up again, and the feedback behind it has to be reachable.
+  it('shows what a drawing last scored and opens the feedback behind it', async () => {
+    mockListResumableSessions.mockResolvedValue([
+      savedDrawing({
+        status: 'completed',
+        lastResultSessionId: 'session-007',
+        lastScore: 72,
+        resultCount: 1,
+      }),
+    ]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/session/:id/feedback"
+            element={<div data-testid="feedback-page">Feedback Page</div>}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-score-session-042')).toHaveTextContent(
+        'last score 72'
+      );
+    });
+
+    await user.click(screen.getByTestId('resume-result-session-042'));
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-page')).toBeInTheDocument();
+    });
+  });
+
+  // Carrying on moves the drawing to a new session, so the result belongs to
+  // an earlier attempt — it still has to be reachable from the row.
+  it('reaches the result of the attempt a continued drawing came from', async () => {
+    mockListResumableSessions.mockResolvedValue([
+      savedDrawing({
+        id: 'session-100',
+        status: 'in_progress',
+        lastResultSessionId: 'session-042',
+        lastScore: 81,
+        resultCount: 2,
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-score-session-100')).toHaveTextContent(
+        'last score 81'
+      );
+    });
+    expect(screen.getByText(/over 2 attempts/)).toBeInTheDocument();
+    expect(screen.getByTestId('resume-result-session-100')).toBeInTheDocument();
+  });
+
+  it('offers no result for a drawing that has never been submitted', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('resume-result-session-042')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('resume-score-session-042')).not.toBeInTheDocument();
   });
 });

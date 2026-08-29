@@ -8,6 +8,7 @@ import { discardSession } from "../../session/discard";
 
 interface ResumeSessionsProps {
   onOpen: (sessionId: string) => void;
+  onViewResult: (sessionId: string) => void;
 }
 
 function formatWhen(value: unknown): string {
@@ -33,7 +34,7 @@ function formatWhen(value: unknown): string {
  * so a list of them alone gives the artist no way to tell one attempt from
  * another.
  */
-function ResumeSessions({ onOpen }: ResumeSessionsProps) {
+function ResumeSessions({ onOpen, onViewResult }: ResumeSessionsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const requested = useRef<Set<string>>(new Set());
@@ -183,6 +184,17 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
                   {session.operationCount} change
                   {session.operationCount === 1 ? "" : "s"} · saved{" "}
                   {formatWhen(session.lastSavedAt)}
+                  {session.resultCount > 0 && (
+                    <>
+                      {" · "}
+                      <span data-testid={`resume-score-${session.id}`}>
+                        last score {session.lastScore}
+                      </span>
+                      {session.resultCount > 1
+                        ? ` over ${session.resultCount} attempts`
+                        : ""}
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -233,6 +245,16 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
                           ? "Keep drawing"
                           : "Resume"}
                     </button>
+                    {session.lastResultSessionId && (
+                      <button
+                        className="session-btn session-btn-secondary"
+                        onClick={() => onViewResult(session.lastResultSessionId)}
+                        data-testid={`resume-result-${session.id}`}
+                        title="Read the feedback on the last attempt before picking this drawing up again"
+                      >
+                        Result
+                      </button>
+                    )}
                     <button
                       className="session-btn session-btn-discard"
                       onClick={() => setConfirmingId(session.id)}

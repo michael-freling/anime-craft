@@ -62,6 +62,13 @@ type ResumableSession struct {
 	StartedAt        time.Time `json:"startedAt"`
 	LastSavedAt      time.Time `json:"lastSavedAt"`
 	OperationCount   int       `json:"operationCount"`
+	// The last graded attempt on this drawing, which may be an earlier
+	// session that handed the drawing on. Empty when nothing has been
+	// submitted yet.
+	LastResultSessionID string `json:"lastResultSessionId"`
+	LastScore           int    `json:"lastScore"`
+	// How many attempts on this drawing have been graded.
+	ResultCount int `json:"resultCount"`
 }
 
 type Feedback struct {
