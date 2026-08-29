@@ -5,9 +5,18 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import HomePage from '../../pages/HomePage';
 
 const mockStartSession = vi.fn();
+const mockListResumableSessions = vi.fn();
+const mockDiscardSession = vi.fn();
+const mockImportDrawingFile = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   StartSession: (...args: any[]) => mockStartSession(...args),
+  ListResumableSessions: (...args: any[]) => mockListResumableSessions(...args),
+  DiscardSession: (...args: any[]) => mockDiscardSession(...args),
+}));
+
+vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
+  ImportDrawingFile: (...args: any[]) => mockImportDrawingFile(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
@@ -39,6 +48,8 @@ describe('HomePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStartSession.mockResolvedValue({ id: 'session-001' });
+    mockListResumableSessions.mockResolvedValue([]);
+    mockDiscardSession.mockResolvedValue(undefined);
   });
 
   it('renders the app title', () => {
@@ -153,5 +164,83 @@ describe('HomePage', () => {
       expect(screen.getByTestId('home-error')).toBeInTheDocument();
       expect(screen.getByText('Server error')).toBeInTheDocument();
     });
+  });
+
+  it('offers unfinished sessions to pick back up', async () => {
+    mockListResumableSessions.mockResolvedValue([
+      {
+        id: 'session-042',
+        referenceImageId: 'ref-001',
+        referenceTitle: 'Simple Face',
+        exerciseMode: 'line_work',
+        startedAt: new Date().toISOString(),
+        lastSavedAt: new Date().toISOString(),
+        operationCount: 12,
+      },
+    ]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/session/:id" element={<div data-testid="session-page">Session Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/12 changes/)).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('resume-btn-session-042'));
+    await waitFor(() => {
+      expect(screen.getByTestId('session-page')).toBeInTheDocument();
+    });
+  });
+
+  it('drops a session from the resume list when it is discarded', async () => {
+    mockListResumableSessions.mockResolvedValueOnce([
+      {
+        id: 'session-042',
+        referenceImageId: 'ref-001',
+        referenceTitle: 'Simple Face',
+        exerciseMode: 'line_work',
+        startedAt: new Date().toISOString(),
+        lastSavedAt: new Date().toISOString(),
+        operationCount: 1,
+      },
+    ]);
+    mockListResumableSessions.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('resume-discard-session-042'));
+
+    expect(mockDiscardSession).toHaveBeenCalledWith('session-042');
+    await waitFor(() => {
+      expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
+    });
+  });
+
+  it('says nothing about resuming when there is nothing to resume', async () => {
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Simple Face')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
   });
 });

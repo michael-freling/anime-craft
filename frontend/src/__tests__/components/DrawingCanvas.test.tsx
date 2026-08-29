@@ -9,17 +9,22 @@ const LAYERS: Layer[] = [
   { id: 'layer-2', name: 'Layer 2', visible: true },
 ];
 
+const DOCUMENT_SIZE = { width: 1024, height: 768 };
+
 function renderCanvas(overrides: Partial<Parameters<typeof DrawingCanvas>[0]> = {}) {
   const surfaceRef = createRef<HTMLDivElement>();
+  const pageRef = createRef<HTMLDivElement>();
   const props = {
     surfaceRef,
+    pageRef,
     registerLayerCanvas: () => vi.fn(),
     layers: LAYERS,
     tool: 'brush' as const,
+    documentSize: DOCUMENT_SIZE,
     ...overrides,
   };
   render(<DrawingCanvas {...props} />);
-  return { surfaceRef };
+  return { surfaceRef, pageRef };
 }
 
 describe('DrawingCanvas', () => {
@@ -64,9 +69,11 @@ describe('DrawingCanvas', () => {
     const { unmount } = render(
       <DrawingCanvas
         surfaceRef={createRef<HTMLDivElement>()}
+        pageRef={createRef<HTMLDivElement>()}
         registerLayerCanvas={() => vi.fn()}
         layers={LAYERS}
         tool="brush"
+        documentSize={DOCUMENT_SIZE}
       />
     );
     expect(screen.getByTestId('drawing-canvas')).toHaveStyle({ cursor: 'crosshair' });
@@ -91,5 +98,15 @@ describe('DrawingCanvas', () => {
     });
 
     expect(registered).toEqual(['layer-1', 'layer-2']);
+  });
+
+  it('draws on a fixed-size page rather than stretching to the window', () => {
+    const { pageRef } = renderCanvas();
+
+    const page = screen.getByTestId('drawing-page');
+    expect(pageRef.current).toBe(page);
+    expect(page).toHaveStyle({ aspectRatio: '1024 / 768' });
+    // The layers live on the page, so strokes land inside the drawing.
+    expect(page).toContainElement(screen.getByTestId('layer-canvas-layer-1'));
   });
 });

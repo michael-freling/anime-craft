@@ -28,7 +28,9 @@ test("complete session flow: pick reference, draw, submit, view feedback", async
   await page.getByTestId("drawing-canvas").waitFor({ timeout: 15000 });
 
   // 7. Draw something on the canvas
-  const canvas = page.getByTestId("drawing-canvas");
+  // Strokes have to land on the page itself, which is centred inside the
+  // surface with a gutter around it.
+  const canvas = page.getByTestId("drawing-page");
   const box = await canvas.boundingBox();
   if (box) {
     await page.mouse.move(box.x + 50, box.y + 50);

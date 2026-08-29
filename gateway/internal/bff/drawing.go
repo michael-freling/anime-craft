@@ -10,17 +10,38 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/michael-freling/anime-craft/gateway/internal/drawdoc"
 	"github.com/michael-freling/anime-craft/gateway/internal/model"
 	"github.com/michael-freling/anime-craft/gateway/internal/repository"
 )
 
 type DrawingService struct {
-	repo    *repository.DrawingRepository
-	dataDir string
+	repo         *repository.DrawingRepository
+	documentRepo *repository.DrawingDocumentRepository
+	sessionRepo  *repository.SessionRepository
+	refRepo      *repository.ReferenceRepository
+	dataDir      string
+	// store holds the autosaved, resumable form of each drawing: a journal of
+	// vector operations checkpointed into an OpenRaster file. repo holds the
+	// flattened PNG a finished session is graded from.
+	store *drawdoc.Store
 }
 
-func NewDrawingService(repo *repository.DrawingRepository, dataDir string) *DrawingService {
-	return &DrawingService{repo: repo, dataDir: dataDir}
+func NewDrawingService(
+	repo *repository.DrawingRepository,
+	documentRepo *repository.DrawingDocumentRepository,
+	sessionRepo *repository.SessionRepository,
+	refRepo *repository.ReferenceRepository,
+	dataDir string,
+) *DrawingService {
+	return &DrawingService{
+		repo:         repo,
+		documentRepo: documentRepo,
+		sessionRepo:  sessionRepo,
+		refRepo:      refRepo,
+		dataDir:      dataDir,
+		store:        drawdoc.NewStore(filepath.Join(dataDir, "drawings")),
+	}
 }
 
 func (s *DrawingService) SaveDrawing(sessionID string, imageDataBase64 string) (model.Drawing, error) {
@@ -56,6 +77,12 @@ func (s *DrawingService) SaveDrawing(sessionID string, imageDataBase64 string) (
 	if err := s.repo.Create(drawing); err != nil {
 		slog.Error("failed to create drawing record", "method", "SaveDrawing", "sessionID", sessionID, "filePath", filePath, "error", err)
 		return model.Drawing{}, fmt.Errorf("create drawing record: %w", err)
+	}
+
+	// Submitting is the moment the drawing is finished, so bring the portable
+	// file level with the journal. A failure here does not lose work.
+	if _, err := s.FlushDrawingDocument(sessionID); err != nil {
+		slog.Error("failed to flush drawing document on submit", "method", "SaveDrawing", "sessionID", sessionID, "error", err)
 	}
 	return drawing, nil
 }

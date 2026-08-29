@@ -72,3 +72,34 @@ func (r *SessionRepository) List(limit, offset int) ([]model.Session, error) {
 	}
 	return sessions, rows.Err()
 }
+
+// ListResumable returns the unfinished sessions the home screen offers to
+// pick back up, newest first. The reference title and autosave details come
+// from a join so the list needs one query rather than one per session.
+func (r *SessionRepository) ListResumable(limit int) ([]model.ResumableSession, error) {
+	rows, err := r.db.Query(
+		`SELECT s.id, s.reference_image_id, COALESCE(ri.title, ''), s.exercise_mode, s.started_at,
+		        d.updated_at, COALESCE(d.operation_count, 0)
+		 FROM sessions s
+		 LEFT JOIN reference_images ri ON ri.id = s.reference_image_id
+		 LEFT JOIN drawing_documents d ON d.session_id = s.id
+		 WHERE s.status = 'in_progress'
+		 ORDER BY COALESCE(d.updated_at, s.started_at) DESC
+		 LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list resumable sessions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	sessions := []model.ResumableSession{}
+	for rows.Next() {
+		var s model.ResumableSession
+		if err := rows.Scan(&s.ID, &s.ReferenceImageID, &s.ReferenceTitle, &s.ExerciseMode, &s.StartedAt, &s.LastSavedAt, &s.OperationCount); err != nil {
+			return nil, fmt.Errorf("scan resumable session: %w", err)
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}

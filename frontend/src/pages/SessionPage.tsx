@@ -1,16 +1,28 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDrawingCanvas } from "../hooks/useDrawingCanvas";
+import type { PendingSave } from "../hooks/useDrawingCanvas";
+import { useDrawingAutosave } from "../hooks/useDrawingAutosave";
 import { useDrawingShortcuts } from "../hooks/useDrawingShortcuts";
+import { parseScene } from "../drawing/document";
 import { SessionProvider, useSession } from "../contexts/SessionContext";
 import DrawingCanvas from "../components/drawing/DrawingCanvas";
 import ToolBar from "../components/drawing/ToolBar";
 import LayerPanel from "../components/drawing/LayerPanel";
+import SaveIndicator from "../components/drawing/SaveIndicator";
 import SessionControls from "../components/session/SessionControls";
 import ReferenceImageViewer from "../components/session/ReferenceImageViewer";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
-import { SaveDrawing } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
-import { EndSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import {
+  ExportDrawingFile,
+  LoadDrawingDocument,
+  SaveDrawing,
+  SaveDrawingOperations,
+} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import {
+  DiscardSession,
+  EndSession,
+} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 function SessionPageInner() {
@@ -19,8 +31,10 @@ function SessionPageInner() {
   const { state: sessionState, dispatch } = useSession();
   const {
     surfaceRef,
+    pageRef,
     registerLayerCanvas,
     state: drawingState,
+    documentSize,
     setTool,
     setBrushSize,
     setBrushColor,
@@ -32,7 +46,32 @@ function SessionPageInner() {
     toggleLayerVisibility,
     moveLayer,
     exportPNG,
+    hydrate,
+    revision,
+    takePendingSave,
+    commitSave,
   } = useDrawingCanvas();
+
+  const [restored, setRestored] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+
+  const saveOperations = useCallback(
+    async (pending: PendingSave) => {
+      if (!id) return;
+      await SaveDrawingOperations(id, JSON.stringify(pending));
+      commitSave(pending);
+    },
+    [id, commitSave],
+  );
+
+  const autosave = useDrawingAutosave<PendingSave>({
+    revision,
+    getPending: takePendingSave,
+    save: saveOperations,
+    // Nothing may be saved before the drawing on disk has been restored, or
+    // an empty editor would overwrite the work being loaded.
+    enabled: Boolean(id) && restored,
+  });
 
   useDrawingShortcuts({ onSetTool: setTool, onUndo: undo, onRedo: redo });
 
@@ -58,6 +97,29 @@ function SessionPageInner() {
     };
   }, [id, dispatch]);
 
+  // Put the saved drawing back before anything can be saved over it.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+
+    LoadDrawingDocument(id)
+      .then((raw: string) => {
+        if (cancelled) return;
+        const scene = parseScene(raw);
+        if (scene) hydrate(scene);
+      })
+      .catch((e: unknown) => {
+        console.error("SessionPage: could not restore the drawing:", e);
+      })
+      .finally(() => {
+        if (!cancelled) setRestored(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, hydrate]);
+
   // Timer tick
   useEffect(() => {
     if (sessionState.status !== "drawing") return;
@@ -68,17 +130,46 @@ function SessionPageInner() {
   const handleSubmit = useCallback(async () => {
     if (!id) return;
     dispatch({ type: "SUBMIT_START" });
+    // The last strokes have to reach the store before the drawing is graded.
+    await autosave.flush();
     const base64Data = exportPNG();
     await SaveDrawing(id, base64Data);
     await EndSession(id);
     dispatch({ type: "SUBMIT_COMPLETE" });
     navigate(`/session/${id}/feedback`);
-  }, [id, dispatch, exportPNG, navigate]);
+  }, [id, dispatch, autosave, exportPNG, navigate]);
 
-  const handleDiscard = useCallback(() => {
+  const handleDiscard = useCallback(async () => {
+    if (id) {
+      // Leave the drawing on disk: discarding takes the session off the
+      // resume list, and the file is still there if it was a misclick.
+      await DiscardSession(id).catch((e: unknown) => {
+        console.error("SessionPage: could not discard the session:", e);
+      });
+    }
     dispatch({ type: "DISCARD" });
     navigate("/");
-  }, [dispatch, navigate]);
+  }, [id, dispatch, navigate]);
+
+  const handleExport = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { Dialogs } = await import("@wailsio/runtime");
+      const destPath = await Dialogs.SaveFile({
+        Title: "Save a copy of this drawing",
+        Filename: "practice.ora",
+        Filters: [{ DisplayName: "OpenRaster drawing", Pattern: "*.ora" }],
+      });
+      if (!destPath) return;
+
+      await autosave.flush();
+      const written = await ExportDrawingFile(id, destPath);
+      setExportMessage(`Saved a copy to ${written}`);
+    } catch (e) {
+      console.error("SessionPage: export failed:", e);
+      setExportMessage(e instanceof Error ? e.message : "Could not save a copy");
+    }
+  }, [id, autosave]);
 
   const referenceImageId = sessionState.referenceImageId;
 
@@ -107,9 +198,11 @@ function SessionPageInner() {
           <div className="canvas-with-layers">
             <DrawingCanvas
               surfaceRef={surfaceRef}
+              pageRef={pageRef}
               registerLayerCanvas={registerLayerCanvas}
               layers={drawingState.layers}
               tool={drawingState.tool}
+              documentSize={documentSize}
             />
             <LayerPanel
               layers={drawingState.layers}
@@ -121,11 +214,24 @@ function SessionPageInner() {
               onMoveLayer={moveLayer}
             />
           </div>
+          {exportMessage && (
+            <p className="session-export-message" data-testid="export-message">
+              {exportMessage}
+            </p>
+          )}
           <SessionControls
             elapsedSeconds={sessionState.elapsedSeconds}
             onSubmit={handleSubmit}
             onDiscard={handleDiscard}
+            onExport={handleExport}
             isSubmitting={sessionState.status === "submitting"}
+            saveIndicator={
+              <SaveIndicator
+                status={autosave.status}
+                lastSavedAt={autosave.lastSavedAt}
+                error={autosave.error}
+              />
+            }
           />
         </div>
       </div>

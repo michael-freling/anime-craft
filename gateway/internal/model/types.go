@@ -29,6 +29,39 @@ type Drawing struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// DrawingDocument is the index entry for a session's autosaved, resumable
+// drawing. The drawing data itself lives in FilePath.
+type DrawingDocument struct {
+	SessionID      string    `json:"sessionId"`
+	FilePath       string    `json:"filePath"`
+	Revision       int       `json:"revision"`
+	OperationCount int       `json:"operationCount"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// DrawingSaveResult is what an autosave reports back so the editor can show
+// what has been persisted and track what it still owes the disk.
+type DrawingSaveResult struct {
+	Revision       int       `json:"revision"`
+	OperationCount int       `json:"operationCount"`
+	Cursor         int       `json:"cursor"`
+	SavedAt        time.Time `json:"savedAt"`
+	// Checkpointed is true when this save also rewrote the OpenRaster file.
+	Checkpointed bool `json:"checkpointed"`
+}
+
+// ResumableSession is an unfinished session as the home screen lists it:
+// enough to recognise the drawing and pick it back up.
+type ResumableSession struct {
+	ID               string     `json:"id"`
+	ReferenceImageID string     `json:"referenceImageId"`
+	ReferenceTitle   string     `json:"referenceTitle"`
+	ExerciseMode     string     `json:"exerciseMode"`
+	StartedAt        time.Time  `json:"startedAt"`
+	LastSavedAt      *time.Time `json:"lastSavedAt"`
+	OperationCount   int        `json:"operationCount"`
+}
+
 type Feedback struct {
 	ID                 string    `json:"id"`
 	SessionID          string    `json:"sessionId"`

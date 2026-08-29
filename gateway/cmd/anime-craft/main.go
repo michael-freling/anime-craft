@@ -37,6 +37,7 @@ func main() {
 	refRepo := repository.NewReferenceRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	drawingRepo := repository.NewDrawingRepository(db)
+	drawingDocRepo := repository.NewDrawingDocumentRepository(db)
 	feedbackRepo := repository.NewFeedbackRepository(db)
 
 	// Always create the inference client — gRPC handles reconnection
@@ -69,7 +70,7 @@ func main() {
 		Description: "Anime drawing practice app with AI feedback",
 		Services: []application.Service{
 			application.NewService(bff.NewSessionService(sessionRepo)),
-			application.NewService(bff.NewDrawingService(drawingRepo, dataDir)),
+			application.NewService(bff.NewDrawingService(drawingRepo, drawingDocRepo, sessionRepo, refRepo, dataDir)),
 			application.NewService(bff.NewFeedbackService(feedbackRepo, sessionRepo, drawingRepo, refRepo, dataDir, lineArtExtractor, feedbackGenerator, imageComparer)),
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),

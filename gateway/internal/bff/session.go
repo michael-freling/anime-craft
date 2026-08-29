@@ -81,3 +81,43 @@ func (s *SessionService) ListSessions(limit int, offset int) ([]model.Session, e
 	}
 	return sessions, nil
 }
+
+// ListResumableSessions returns the unfinished sessions the home screen
+// offers to pick back up. Autosave means every one of them still has its
+// drawing on disk.
+func (s *SessionService) ListResumableSessions(limit int) ([]model.ResumableSession, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	sessions, err := s.repo.ListResumable(limit)
+	if err != nil {
+		slog.Error("failed to list resumable sessions", "method", "ListResumableSessions", "limit", limit, "error", err)
+		return nil, err
+	}
+	return sessions, nil
+}
+
+// DiscardSession marks an unfinished session abandoned so it stops showing up
+// as resumable.
+func (s *SessionService) DiscardSession(sessionID string) error {
+	session, err := s.repo.Get(sessionID)
+	if err != nil {
+		slog.Error("failed to get session", "method", "DiscardSession", "sessionID", sessionID, "error", err)
+		return err
+	}
+	if session.Status != "in_progress" {
+		return nil
+	}
+
+	now := time.Now()
+	duration := int(now.Sub(session.StartedAt).Seconds())
+	session.Status = "discarded"
+	session.EndedAt = &now
+	session.DurationSeconds = &duration
+
+	if err := s.repo.Update(session); err != nil {
+		slog.Error("failed to discard session", "method", "DiscardSession", "sessionID", sessionID, "error", err)
+		return fmt.Errorf("discard session: %w", err)
+	}
+	return nil
+}

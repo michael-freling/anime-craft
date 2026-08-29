@@ -119,15 +119,17 @@ Other data (session history, progress stats, achievements) is fetched on demand 
 
 ### Drawing Canvas
 
-The drawing canvas uses the **HTML5 Canvas API** directly (or via a thin wrapper library such as `perfect-freehand` for pressure-sensitive stroke rendering). Key capabilities for MVP:
+The drawing canvas uses the **HTML5 Canvas API** directly, one canvas per layer. Key capabilities:
 
 - Freehand drawing with configurable brush size and color
 - Eraser tool
-- Undo / redo (stroke-level history stack)
-- Clear canvas
+- Layers: add, delete, reorder, hide
+- Undo / redo
 - Export canvas to PNG (for submission to AI feedback)
 
-Canvas state (stroke history) lives in a local `useRef` and is not part of React state to avoid unnecessary re-renders during drawing.
+The drawing is held as an **ordered log of vector operations** plus a cursor saying how many of them apply; undo moves the cursor rather than restoring pixels. That is what makes it saveable — see [Saving drawings](drawing-file-format.md) — and it removes the memory ceiling that bitmap-snapshot undo imposed. Strokes are stored in document units on a fixed-size page, so a drawing keeps its proportions at any window size.
+
+The log lives in a local `useRef` and is not part of React state, so a stroke in progress causes no re-renders.
 
 ---
 
@@ -168,11 +170,19 @@ internal/
 - `EndSession(sessionID string) -> Session` -- Marks session as completed, records end time.
 - `GetSession(sessionID string) -> Session` -- Retrieves a single session.
 - `ListSessions(limit int, offset int) -> []Session` -- Retrieves session history with pagination.
+- `ListResumableSessions(limit int) -> []ResumableSession` -- Unfinished sessions the home screen offers to pick back up, with what their autosave last wrote.
+- `DiscardSession(sessionID string) -> error` -- Marks an unfinished session abandoned so it stops appearing as resumable.
 
-**DrawingService** -- Handles saving and retrieving user drawings.
+**DrawingService** -- Handles saving and retrieving user drawings, both the autosaved editable document and the flattened PNG a finished session is graded from.
 
 - `SaveDrawing(sessionID string, imageData []byte) -> Drawing` -- Saves the exported canvas PNG. Stores the image file on disk and metadata in SQLite.
 - `GetDrawing(sessionID string) -> Drawing` -- Retrieves drawing metadata and file path for a session.
+- `SaveDrawingOperations(sessionID string, requestJSON string) -> DrawingSaveResult` -- Autosave. Appends the vector operations the editor has that the store does not.
+- `LoadDrawingDocument(sessionID string) -> string` -- Returns the saved scene as JSON so a session can be resumed exactly as it was left.
+- `FlushDrawingDocument(sessionID string) -> DrawingSaveResult` -- Brings the OpenRaster checkpoint level with the journal.
+- `ExportDrawingFile(sessionID string, destPath string) -> string` -- Writes a portable `.ora` copy.
+- `ImportDrawingFile(srcPath string) -> Session` -- Opens a saved `.ora` as a new session, restoring the reference image inside it.
+- `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing.
 
 **FeedbackService** -- Orchestrates AI feedback.
 
@@ -235,9 +245,19 @@ Directory structure within the data directory:
 ```
 anime-craft/
   anime-craft.db          -- SQLite database
-  drawings/               -- User drawing PNGs, named by session ID
+  drawings/
+    <sessionID>.png       -- Flattened drawing submitted for feedback
+    <sessionID>/
+      journal.ndjson      -- Vector operations, appended on every autosave
+      state.json          -- Undo cursor, revision, tool, active layer
+      document.ora        -- OpenRaster checkpoint (layers + vectors + reference)
   references/             -- Reference image files
 ```
+
+The autosaved drawing is a journal of vector operations checkpointed into an
+OpenRaster file, so a session can be resumed with its layers and undo history,
+and a saved file opens in Krita or MyPaint. See
+[Saving drawings](drawing-file-format.md).
 
 ---
 
@@ -247,6 +267,7 @@ anime-craft/
 
 ```
 [reference_images] 1---* [sessions] 1---1 [drawings]
+                                    1---1 [drawing_documents]
                                     1---1 [feedback]
                                     *---* [session_achievements]
                          [achievements] 1---* [session_achievements]
@@ -285,6 +306,18 @@ anime-craft/
 | session_id | TEXT | FK -> sessions.id, UNIQUE, NOT NULL | One drawing per session |
 | file_path | TEXT | NOT NULL | Relative path to the saved PNG |
 | created_at | DATETIME | NOT NULL | When the drawing was saved |
+
+### Table: drawing_documents
+
+Index of the autosaved, resumable drawing for a session. The drawing itself lives on disk; this table is what the home screen reads to offer a session for resuming.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| session_id | TEXT | PK, FK -> sessions.id | One document per session |
+| file_path | TEXT | NOT NULL | Path to the OpenRaster checkpoint |
+| revision | INTEGER | NOT NULL | Bumped on every autosave |
+| operation_count | INTEGER | NOT NULL | Length of the operation log |
+| updated_at | DATETIME | NOT NULL | When the drawing was last saved |
 
 ### Table: feedback
 
