@@ -296,7 +296,7 @@ and a saved file opens in Krita or MyPaint. See
 | reference_image_id | TEXT | FK -> reference_images.id, NOT NULL | The reference used |
 | exercise_mode | TEXT | NOT NULL | "line_work", "coloring", "full_drawing" |
 | status | TEXT | NOT NULL | "in_progress", "completed", "discarded" |
-| continued_by_session_id | TEXT | FK -> sessions.id | The session that took this one's drawing on, when it was carried on with |
+| continued_by_session_id | TEXT | | Id of the session that took this one's drawing on, when it was carried on with. Not an enforced foreign key: SQLite cannot add one with ALTER TABLE |
 | started_at | DATETIME | NOT NULL | When the session began |
 | ended_at | DATETIME | | When the session ended |
 | duration_seconds | INTEGER | | Total drawing time in seconds |

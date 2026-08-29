@@ -113,3 +113,25 @@ func setStatus(t *testing.T, repo *SessionRepository, id string, status string) 
 	session.EndedAt = &now
 	require.NoError(t, repo.Update(session))
 }
+
+// Sessions that predate continuation have no link, which must read back as
+// "still holds its own drawing" rather than as an error.
+func TestSessionRepository_ContinuedBy(t *testing.T) {
+	db := testDB(t)
+	repo := NewSessionRepository(db)
+	seedSession(t, db, "sess-400")
+	seedSession(t, db, "sess-401")
+
+	next, err := repo.ContinuedBy("sess-400")
+	require.NoError(t, err)
+	assert.Empty(t, next)
+
+	require.NoError(t, repo.SetContinuedBy("sess-400", "sess-401"))
+
+	next, err = repo.ContinuedBy("sess-400")
+	require.NoError(t, err)
+	assert.Equal(t, "sess-401", next)
+
+	_, err = repo.ContinuedBy("nope")
+	assert.Error(t, err)
+}
