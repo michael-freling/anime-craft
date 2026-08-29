@@ -15,6 +15,7 @@ const mockDiscardSession = vi.fn();
 const mockLoadDrawingDocument = vi.fn();
 const mockSaveDrawingOperations = vi.fn();
 const mockExportDrawingFile = vi.fn();
+const mockDeleteDrawingDocument = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   GetSession: (...args: any[]) => mockGetSession(...args),
@@ -34,6 +35,7 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
   LoadDrawingDocument: (...args: any[]) => mockLoadDrawingDocument(...args),
   SaveDrawingOperations: (...args: any[]) => mockSaveDrawingOperations(...args),
   ExportDrawingFile: (...args: any[]) => mockExportDrawingFile(...args),
+  DeleteDrawingDocument: (...args: any[]) => mockDeleteDrawingDocument(...args),
 }));
 
 function renderSessionPage() {
@@ -69,6 +71,7 @@ describe('SessionPage', () => {
     mockSaveDrawing.mockResolvedValue({ id: 'drawing-001' });
     mockEndSession.mockResolvedValue({ id: 'session-001' });
     mockDiscardSession.mockResolvedValue(undefined);
+    mockDeleteDrawingDocument.mockResolvedValue(undefined);
   });
 
   it('renders loading state initially', () => {
@@ -279,7 +282,9 @@ describe('SessionPage', () => {
     expect(screen.getByTestId('layer-item-layer-2')).toBeInTheDocument();
   });
 
-  it('marks the session discarded so it stops offering itself for resuming', async () => {
+  // Discarding has to undo the autosave as well, or the drawing sits in the
+  // data directory forever with nothing in the app able to reach it.
+  it('discards the session and the drawing autosave kept for it', async () => {
     const user = userEvent.setup();
     renderSessionPage();
 
@@ -289,9 +294,25 @@ describe('SessionPage', () => {
     await waitFor(() => {
       expect(mockDiscardSession).toHaveBeenCalledWith('session-001');
     });
+    expect(mockDeleteDrawingDocument).toHaveBeenCalledWith('session-001');
     await waitFor(() => {
       expect(screen.getByText('Home Page')).toBeInTheDocument();
     });
+  });
+
+  it('still leaves the drawing when discarding fails', async () => {
+    mockDiscardSession.mockRejectedValue(new Error('database is locked'));
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await user.click(screen.getByTestId('discard-btn'));
+
+    // The artist is not trapped on the page by a failed discard.
+    await waitFor(() => {
+      expect(screen.getByText('Home Page')).toBeInTheDocument();
+    });
+    expect(mockDeleteDrawingDocument).not.toHaveBeenCalled();
   });
 
   it('offers to save a copy of the drawing to a file', async () => {

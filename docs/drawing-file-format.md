@@ -136,6 +136,10 @@ shown rather than swallowed, and retried — the work is still in the editor.
 - **Save a copy…** writes a `.ora` anywhere; **Open a saved drawing…** turns
   one back into a session, restoring its reference image if this machine does
   not already have it.
+- **Discard** takes the session off the resume list *and* deletes what autosave
+  kept for it. Both halves belong together: leaving the files behind would grow
+  the data directory for every abandoned session with nothing in the app able
+  to reach them.
 
 ## Compatibility
 

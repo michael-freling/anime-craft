@@ -182,7 +182,7 @@ internal/
 - `FlushDrawingDocument(sessionID string) -> DrawingSaveResult` -- Brings the OpenRaster checkpoint level with the journal.
 - `ExportDrawingFile(sessionID string, destPath string) -> string` -- Writes a portable `.ora` copy.
 - `ImportDrawingFile(srcPath string) -> Session` -- Opens a saved `.ora` as a new session, restoring the reference image inside it.
-- `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing.
+- `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing, used alongside `DiscardSession` when the artist abandons a session.
 
 **FeedbackService** -- Orchestrates AI feedback.
 

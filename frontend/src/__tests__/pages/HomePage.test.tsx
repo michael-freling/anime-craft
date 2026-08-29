@@ -8,6 +8,7 @@ const mockStartSession = vi.fn();
 const mockListResumableSessions = vi.fn();
 const mockDiscardSession = vi.fn();
 const mockImportDrawingFile = vi.fn();
+const mockDeleteDrawingDocument = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   StartSession: (...args: any[]) => mockStartSession(...args),
@@ -17,6 +18,7 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
   ImportDrawingFile: (...args: any[]) => mockImportDrawingFile(...args),
+  DeleteDrawingDocument: (...args: any[]) => mockDeleteDrawingDocument(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
@@ -50,6 +52,7 @@ describe('HomePage', () => {
     mockStartSession.mockResolvedValue({ id: 'session-001' });
     mockListResumableSessions.mockResolvedValue([]);
     mockDiscardSession.mockResolvedValue(undefined);
+    mockDeleteDrawingDocument.mockResolvedValue(undefined);
   });
 
   it('renders the app title', () => {
@@ -226,6 +229,7 @@ describe('HomePage', () => {
     await user.click(screen.getByTestId('resume-discard-session-042'));
 
     expect(mockDiscardSession).toHaveBeenCalledWith('session-042');
+    await waitFor(() => expect(mockDeleteDrawingDocument).toHaveBeenCalledWith('session-042'));
     await waitFor(() => {
       expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
     });

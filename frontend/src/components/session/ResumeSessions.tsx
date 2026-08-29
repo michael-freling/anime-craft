@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ListResumableSessions } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
-import { DiscardSession } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { discardSession } from "../../session/discard";
 
 interface ResumeSessionsProps {
   onResume: (sessionId: string) => void;
@@ -56,7 +56,7 @@ function ResumeSessions({ onResume }: ResumeSessionsProps) {
 
   const handleDiscard = async (sessionId: string) => {
     try {
-      await DiscardSession(sessionId);
+      await discardSession(sessionId);
       await load();
     } catch (e) {
       console.error("ResumeSessions: could not discard the session:", e);

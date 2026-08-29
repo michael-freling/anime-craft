@@ -19,10 +19,8 @@ import {
   SaveDrawing,
   SaveDrawingOperations,
 } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
-import {
-  DiscardSession,
-  EndSession,
-} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { EndSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { discardSession } from "../session/discard";
 import { GetReference } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
 
 function SessionPageInner() {
@@ -141,9 +139,9 @@ function SessionPageInner() {
 
   const handleDiscard = useCallback(async () => {
     if (id) {
-      // Leave the drawing on disk: discarding takes the session off the
-      // resume list, and the file is still there if it was a misclick.
-      await DiscardSession(id).catch((e: unknown) => {
+      // A failure here costs an abandoned session on the resume list, which
+      // is not worth trapping the artist on the page for.
+      await discardSession(id).catch((e: unknown) => {
         console.error("SessionPage: could not discard the session:", e);
       });
     }
