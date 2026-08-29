@@ -213,6 +213,24 @@ func OpenORA(srcPath string) (*ORAFile, error) {
 	return result, nil
 }
 
+// ReadThumbnail returns the PNG preview stored inside a saved drawing.
+// Every checkpoint writes one, so a preview costs unzipping a single entry
+// rather than re-rendering the drawing.
+func ReadThumbnail(srcPath string) ([]byte, error) {
+	reader, err := zip.OpenReader(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrNotOpenRaster, srcPath)
+	}
+	defer func() { _ = reader.Close() }()
+
+	for _, file := range reader.File {
+		if file.Name == thumbnailEntry {
+			return readEntry(file)
+		}
+	}
+	return nil, fmt.Errorf("drawing has no thumbnail")
+}
+
 // ReadORA returns just the editable scene from a saved drawing.
 func ReadORA(srcPath string) (*Scene, error) {
 	file, err := OpenORA(srcPath)

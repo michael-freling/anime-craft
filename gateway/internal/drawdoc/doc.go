@@ -131,7 +131,12 @@ type Scene struct {
 	ActiveLayerID string         `json:"activeLayerId,omitempty"`
 	// Cursor is the index of the last applied operation; -1 means none.
 	// Operations after it are the redo stack, kept so undo survives a restart.
-	Cursor     int         `json:"cursor"`
+	Cursor int `json:"cursor"`
+	// BaseIndex marks operations the artist inherited rather than made: the
+	// first BaseIndex of them are the drawing this session started from, and
+	// undo stops there. Without it, a session begun from an earlier drawing
+	// would let undo dismantle work that was never done in this session.
+	BaseIndex  int         `json:"baseIndex,omitempty"`
 	Operations []Operation `json:"operations"`
 	Revision   int         `json:"revision"`
 	SavedAt    time.Time   `json:"savedAt"`
@@ -166,11 +171,18 @@ func (s *Scene) normalise() {
 	if s.Operations == nil {
 		s.Operations = []Operation{}
 	}
-	if s.Cursor < -1 {
-		s.Cursor = -1
+	if s.BaseIndex < 0 {
+		s.BaseIndex = 0
+	}
+	if s.BaseIndex > len(s.Operations) {
+		s.BaseIndex = len(s.Operations)
 	}
 	if s.Cursor > len(s.Operations)-1 {
 		s.Cursor = len(s.Operations) - 1
+	}
+	// Undo never reaches below the inherited drawing.
+	if s.Cursor < s.BaseIndex-1 {
+		s.Cursor = s.BaseIndex - 1
 	}
 	if s.ActiveLayerID == "" {
 		s.ActiveLayerID = firstLayerID
@@ -260,6 +272,22 @@ func (d Document) indexOf(id string) int {
 
 // Materialize applies the scene's own log up to its own cursor.
 func (s *Scene) Materialize() Document { return Materialize(s.Operations, s.Cursor) }
+
+// Seed turns a scene into the starting point for a new session: the drawing
+// as it currently stands becomes the baseline, and the session begins with an
+// empty history.
+//
+// The redo stack goes, because it belonged to the session the drawing came
+// from — offering to redo someone's abandoned strokes into a fresh attempt is
+// not something the artist asked for. What is left is inherited rather than
+// made here, so undo has nothing to reach back into.
+func (s *Scene) Seed() {
+	s.normalise()
+	kept := s.Cursor + 1
+	s.Operations = s.Operations[:kept:kept]
+	s.BaseIndex = kept
+	s.Cursor = kept - 1
+}
 
 func decodeScene(data []byte) (*Scene, error) {
 	var scene Scene

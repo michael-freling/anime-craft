@@ -2,6 +2,7 @@ package bff
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -219,6 +220,11 @@ func (s *DrawingService) startSessionFromScene(scene *drawdoc.Scene, referenceID
 	}
 	scene.Reference.ID = referenceID
 
+	// The drawing is what this session starts from, not what it did: undo
+	// belongs to the artist working now, and must not reach into an attempt
+	// that has already been submitted.
+	scene.Seed()
+
 	state, err := s.store.Import(session.ID, scene)
 	if err != nil {
 		return model.Session{}, fmt.Errorf("seed the drawing: %w", err)
@@ -228,6 +234,20 @@ func (s *DrawingService) startSessionFromScene(scene *drawdoc.Scene, referenceID
 	}
 	s.recordDocument(session.ID, state)
 	return session, nil
+}
+
+// GetDrawingThumbnail returns a small preview of a session's saved drawing as
+// a data URI, so the home screen can show what each saved drawing is rather
+// than a list of reference titles the artist has to tell apart from memory.
+// It returns an empty string when there is no preview yet, which the caller
+// shows as a placeholder rather than an error.
+func (s *DrawingService) GetDrawingThumbnail(sessionID string) (string, error) {
+	data, err := drawdoc.ReadThumbnail(s.store.DocumentPath(sessionID))
+	if err != nil {
+		slog.Debug("no drawing thumbnail available", "method", "GetDrawingThumbnail", "sessionID", sessionID, "error", err)
+		return "", nil
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 // DeleteDrawingDocument throws away a session's saved drawing, used when the

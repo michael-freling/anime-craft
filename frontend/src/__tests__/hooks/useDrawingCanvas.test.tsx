@@ -405,3 +405,73 @@ describe('useDrawingCanvas restoring a saved drawing', () => {
     ]);
   });
 });
+
+describe('useDrawingCanvas starting from an inherited drawing', () => {
+  // A drawing carried over from a finished attempt is the starting point,
+  // not history: undoing into it would dismantle work done elsewhere.
+  const inherited = {
+    version: 1,
+    document: { width: 1024, height: 768 },
+    activeLayerId: 'layer-1',
+    cursor: 1,
+    baseIndex: 2,
+    operations: [
+      {
+        type: 'add_stroke' as const,
+        stroke: { id: 'a', layerId: 'layer-1', tool: 'brush' as const, color: '#000', size: 2, points: [1, 1, 2, 2] },
+      },
+      {
+        type: 'add_layer' as const,
+        layer: { id: 'layer-2', name: 'Layer 2', visible: true },
+      },
+    ],
+  };
+
+  it('opens with the drawing on the canvas and nothing to undo', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.hydrate(inherited));
+
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+    expect(result.current.state.canUndo).toBe(false);
+    expect(result.current.state.canRedo).toBe(false);
+  });
+
+  it('undoes only what the artist does from here', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.hydrate(inherited));
+
+    act(() => result.current.addLayer());
+    expect(result.current.state.canUndo).toBe(true);
+
+    act(() => result.current.undo());
+    expect(result.current.state.canUndo).toBe(false);
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+
+    // Undoing again cannot eat into the inherited drawing.
+    act(() => result.current.undo());
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+  });
+
+  it('never offers the store a save that would rewrite the inherited part', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.hydrate(inherited));
+
+    act(() => result.current.addLayer());
+    act(() => result.current.undo());
+    act(() => result.current.toggleLayerVisibility('layer-1'));
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.fromIndex).toBeGreaterThanOrEqual(2);
+    expect(pending.cursor).toBeGreaterThanOrEqual(1);
+  });
+});

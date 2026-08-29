@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDrawingCanvas } from "../hooks/useDrawingCanvas";
 import type { PendingSave } from "../hooks/useDrawingCanvas";
 import { useDrawingAutosave } from "../hooks/useDrawingAutosave";
@@ -15,6 +15,7 @@ import ReferenceImageViewer from "../components/session/ReferenceImageViewer";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import {
   ExportDrawingFile,
+  FlushDrawingDocument,
   LoadDrawingDocument,
   SaveDrawing,
   SaveDrawingOperations,
@@ -117,6 +118,23 @@ function SessionPageInner() {
       cancelled = true;
     };
   }, [id, hydrate]);
+
+  // Leaving the drawing is when the home screen next shows it, and the
+  // preview it shows lives in the checkpoint. Autosave alone only appends to
+  // the journal, which could leave the preview several strokes behind.
+  const flushRef = useRef(autosave.flush);
+  flushRef.current = autosave.flush;
+  useEffect(() => {
+    if (!id) return;
+    return () => {
+      flushRef
+        .current()
+        .then(() => FlushDrawingDocument(id))
+        .catch((e: unknown) => {
+          console.error("SessionPage: could not flush the drawing:", e);
+        });
+    };
+  }, [id]);
 
   // Timer tick
   useEffect(() => {

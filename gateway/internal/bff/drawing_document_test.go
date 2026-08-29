@@ -1,9 +1,13 @@
 package bff
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -423,4 +427,117 @@ func TestSessionService_DiscardIsIdempotent(t *testing.T) {
 
 	require.NoError(t, f.sessionSvc.DiscardSession(f.sessionID))
 	require.NoError(t, f.sessionSvc.DiscardSession(f.sessionID))
+}
+
+// A submitted attempt is the starting point for the next one, not history the
+// artist can unwind: undo must not reach into a drawing that was inherited.
+func TestDrawingService_ResumeDrawing_InheritedWorkIsNotUndoable(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 1,
+		strokeOp("s1", 10, 10, 200, 200),
+		strokeOp("s2", 20, 300, 400, 40),
+	))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	next, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	scene := loadScene(t, f.svc, next.ID)
+	assert.Equal(t, 2, scene.BaseIndex, "both inherited strokes are the starting point")
+	assert.Equal(t, 1, scene.Cursor, "the drawing is fully on the canvas")
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2)
+
+	// The store refuses a save that would rewrite the inherited drawing, so a
+	// stale client cannot undo past the baseline either.
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(1, 0, strokeOp("s9", 1, 1, 2, 2)))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the drawing was started from")
+
+	// Drawing on top works, and undoing that comes back to the inherited
+	// drawing rather than eating into it.
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(2, 2, strokeOp("s3", 5, 5, 6, 6)))
+	require.NoError(t, err)
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(3, 1))
+	require.NoError(t, err)
+
+	scene = loadScene(t, f.svc, next.ID)
+	assert.Equal(t, 1, scene.Cursor)
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2)
+}
+
+// The redo stack belonged to the session the drawing came from; offering to
+// redo someone else's abandoned strokes into a fresh attempt is not useful.
+func TestDrawingService_ResumeDrawing_DropsTheOldRedoStack(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0,
+		strokeOp("s1", 10, 10, 200, 200),
+		strokeOp("s2", 20, 300, 400, 40),
+	))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	next, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	scene := loadScene(t, f.svc, next.ID)
+	assert.Len(t, scene.Operations, 1, "only what was actually on the canvas comes across")
+	assert.Equal(t, 1, scene.BaseIndex)
+	assert.Equal(t, 0, scene.Cursor)
+}
+
+// The baseline has to survive a checkpoint, or reopening the saved file would
+// hand the inherited drawing back as undoable history.
+func TestDrawingService_SeededBaselineSurvivesACheckpoint(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+	next, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	exported := filepath.Join(t.TempDir(), "practice.ora")
+	_, err = f.svc.ExportDrawingFile(next.ID, exported)
+	require.NoError(t, err)
+
+	reopened, err := drawdoc.ReadORA(exported)
+	require.NoError(t, err)
+	assert.Equal(t, 1, reopened.BaseIndex)
+	assert.Equal(t, 0, reopened.Cursor)
+}
+
+func TestDrawingService_GetDrawingThumbnail(t *testing.T) {
+	f := newDrawingFixture(t)
+
+	// Nothing saved yet is a missing preview, not an error.
+	thumbnail, err := f.svc.GetDrawingThumbnail(f.sessionID)
+	require.NoError(t, err)
+	assert.Empty(t, thumbnail)
+
+	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 900, 700)))
+	require.NoError(t, err)
+
+	thumbnail, err = f.svc.GetDrawingThumbnail(f.sessionID)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(thumbnail, "data:image/png;base64,"))
+
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(thumbnail, "data:image/png;base64,"))
+	require.NoError(t, err)
+	image, err := png.Decode(bytes.NewReader(raw))
+	require.NoError(t, err)
+	// OpenRaster caps thumbnails at 256 on the long edge.
+	assert.Equal(t, 256, image.Bounds().Dx())
+	assert.Equal(t, 192, image.Bounds().Dy())
+}
+
+func loadScene(t *testing.T, svc *DrawingService, sessionID string) drawdoc.Scene {
+	t.Helper()
+	raw, err := svc.LoadDrawingDocument(sessionID)
+	require.NoError(t, err)
+	var scene drawdoc.Scene
+	require.NoError(t, json.Unmarshal([]byte(raw), &scene))
+	return scene
 }

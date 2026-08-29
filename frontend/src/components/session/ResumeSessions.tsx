@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ListResumableSessions } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
-import { ResumeDrawing } from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import {
+  GetDrawingThumbnail,
+  ResumeDrawing,
+} from "../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
 import { discardSession } from "../../session/discard";
 
 interface ResumeSessionsProps {
@@ -25,10 +28,17 @@ function formatWhen(value: unknown): string {
  * they are waiting here. Submitted drawings are listed alongside unfinished
  * ones: finishing a session should not be the moment a drawing becomes
  * unreachable.
+ *
+ * Each row shows the drawing itself. Reference titles repeat across sessions,
+ * so a list of them alone gives the artist no way to tell one attempt from
+ * another.
  */
 function ResumeSessions({ onOpen }: ResumeSessionsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const requested = useRef<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
@@ -58,6 +68,41 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
     };
   }, []);
 
+  // Previews are fetched once each. A drawing without one yet keeps its
+  // placeholder rather than blanking the row.
+  useEffect(() => {
+    let cancelled = false;
+    const missing = sessions.filter(
+      (session) => session?.id && !requested.current.has(session.id),
+    );
+    if (missing.length === 0) return;
+    missing.forEach((session) => requested.current.add(session.id));
+
+    Promise.all(
+      missing.map((session) =>
+        GetDrawingThumbnail(session.id)
+          .then((dataUrl: string) => [session.id, dataUrl] as const)
+          .catch((e: unknown) => {
+            console.error("ResumeSessions: could not load a preview:", e);
+            requested.current.delete(session.id);
+            return null;
+          }),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const loaded = results.filter(
+        (result): result is readonly [string, string] =>
+          result !== null && Boolean(result[1]),
+      );
+      if (loaded.length === 0) return;
+      setThumbnails((prev) => ({ ...prev, ...Object.fromEntries(loaded) }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions]);
+
   // Which session to open is the backend's call: an unfinished one is picked
   // up where it was left, a submitted one is continued in a fresh attempt.
   const handleOpen = async (sessionId: string) => {
@@ -73,14 +118,16 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
     }
   };
 
-  const handleDiscard = async (sessionId: string) => {
+  const handleDelete = async (sessionId: string) => {
+    setConfirmingId(null);
     setError(null);
     try {
       await discardSession(sessionId);
+      requested.current.delete(sessionId);
       await load();
     } catch (e) {
-      console.error("ResumeSessions: could not discard the session:", e);
-      setError(e instanceof Error ? e.message : "Could not discard the session");
+      console.error("ResumeSessions: could not delete the drawing:", e);
+      setError(e instanceof Error ? e.message : "Could not delete the drawing");
     }
   };
 
@@ -105,12 +152,26 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
       <ul className="resume-list">
         {sessions.map((session) => {
           const submitted = session.status === "completed";
+          const confirming = confirmingId === session.id;
           return (
             <li
               key={session.id}
               className="resume-item"
               data-testid={`resume-item-${session.id}`}
             >
+              <div className="resume-preview">
+                {thumbnails[session.id] ? (
+                  <img
+                    className="resume-preview-img"
+                    src={thumbnails[session.id]}
+                    alt={`Drawing from ${session.referenceTitle || "a reference"}`}
+                    data-testid={`resume-preview-${session.id}`}
+                  />
+                ) : (
+                  <span className="thumbnail-placeholder">…</span>
+                )}
+              </div>
+
               <div className="resume-details">
                 <span className="resume-title">
                   {session.referenceTitle || "Untitled reference"}
@@ -127,32 +188,58 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
                   {formatWhen(session.lastSavedAt)}
                 </span>
               </div>
+
               <div className="resume-actions">
-                <button
-                  className="session-btn session-btn-submit"
-                  onClick={() => handleOpen(session.id)}
-                  disabled={busyId === session.id}
-                  data-testid={`resume-btn-${session.id}`}
-                  title={
-                    submitted
-                      ? "Carry on from this drawing in a new session, leaving the submitted one and its feedback as they are"
-                      : "Pick this session up where you left it"
-                  }
-                >
-                  {busyId === session.id
-                    ? "Opening..."
-                    : submitted
-                      ? "Keep drawing"
-                      : "Resume"}
-                </button>
-                {!submitted && (
-                  <button
-                    className="session-btn session-btn-discard"
-                    onClick={() => handleDiscard(session.id)}
-                    data-testid={`resume-discard-${session.id}`}
-                  >
-                    Discard
-                  </button>
+                {confirming ? (
+                  <>
+                    <span className="resume-confirm">Delete this drawing?</span>
+                    <button
+                      className="session-btn session-btn-discard"
+                      onClick={() => handleDelete(session.id)}
+                      data-testid={`resume-delete-confirm-${session.id}`}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      className="session-btn session-btn-secondary"
+                      onClick={() => setConfirmingId(null)}
+                      data-testid={`resume-delete-cancel-${session.id}`}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="session-btn session-btn-submit"
+                      onClick={() => handleOpen(session.id)}
+                      disabled={busyId === session.id}
+                      data-testid={`resume-btn-${session.id}`}
+                      title={
+                        submitted
+                          ? "Carry on from this drawing in a new session, leaving the submitted one and its feedback as they are"
+                          : "Pick this session up where you left it"
+                      }
+                    >
+                      {busyId === session.id
+                        ? "Opening..."
+                        : submitted
+                          ? "Keep drawing"
+                          : "Resume"}
+                    </button>
+                    <button
+                      className="session-btn session-btn-discard"
+                      onClick={() => setConfirmingId(session.id)}
+                      data-testid={`resume-delete-${session.id}`}
+                      title={
+                        submitted
+                          ? "Delete this drawing. The session's score and feedback are kept."
+                          : "Delete this unfinished drawing"
+                      }
+                    >
+                      Delete
+                    </button>
+                  </>
                 )}
               </div>
             </li>

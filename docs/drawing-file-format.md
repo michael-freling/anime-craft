@@ -156,6 +156,31 @@ session. It is offered from the home screen (**Keep drawing**) and from the
 feedback page (**Keep drawing on this**), where the suggestions are still on
 screen.
 
+The drawing that comes across is the **baseline** of the new session, recorded
+as `baseIndex` in the scene: the first `baseIndex` operations were inherited
+rather than made here, and undo stops at that line. Without it, undo in a fresh
+attempt would unpick strokes from a drawing that had already been submitted and
+graded. The store enforces the same line — a save that would rewrite the
+inherited operations is refused, so a stale editor cannot cross it either. The
+redo stack does not come across at all: it belonged to the session the drawing
+came from.
+
+### Previews
+
+Every checkpoint already writes `Thumbnails/thumbnail.png`, so the home screen
+shows each drawing for the cost of unzipping one entry rather than re-rendering
+anything. Leaving a session flushes its checkpoint, which is what keeps the
+preview current — autosave alone only appends to the journal, and the preview
+would otherwise lag by as much as a checkpoint interval.
+
+### Deleting a drawing
+
+**Delete** on the home screen removes the journal and the checkpoint, and marks
+the session abandoned if it was still unfinished. A session that was already
+submitted keeps its score and its feedback: what is deleted is the drawing that
+can be worked on again, not the record of having practised. It asks first,
+since nothing brings the drawing back.
+
 ## Compatibility
 
 `scene.json` carries a `version`. A file written by a newer version is refused

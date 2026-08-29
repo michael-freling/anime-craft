@@ -74,6 +74,13 @@ export interface Scene {
   tool?: ToolState;
   activeLayerId: string;
   cursor: number;
+  /**
+   * Operations the artist inherited rather than made: the first `baseIndex`
+   * of them are the drawing this session started from, and undo stops there.
+   * Without it, a session begun from an earlier drawing would let undo
+   * dismantle work that was never done in this session.
+   */
+  baseIndex?: number;
   operations: Operation[];
   revision?: number;
   savedAt?: string;
@@ -201,6 +208,12 @@ export function parseScene(raw: string): Scene | null {
       ? scene.document
       : DEFAULT_DOCUMENT_SIZE;
 
+  const baseIndex = Math.max(
+    0,
+    Math.min(scene.baseIndex ?? 0, operations.length),
+  );
+  const cursor = Math.min(scene.cursor ?? -1, operations.length - 1);
+
   return {
     version: scene.version ?? SCENE_VERSION,
     document: { ...size },
@@ -208,7 +221,8 @@ export function parseScene(raw: string): Scene | null {
     reference: scene.reference,
     tool: scene.tool,
     activeLayerId: scene.activeLayerId || FIRST_LAYER.id,
-    cursor: Math.max(-1, Math.min(scene.cursor ?? -1, operations.length - 1)),
+    cursor: Math.max(cursor, baseIndex - 1),
+    baseIndex,
     operations,
     revision: scene.revision,
     savedAt: scene.savedAt,

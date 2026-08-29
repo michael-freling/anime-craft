@@ -10,6 +10,7 @@ const mockDiscardSession = vi.fn();
 const mockImportDrawingFile = vi.fn();
 const mockDeleteDrawingDocument = vi.fn();
 const mockResumeDrawing = vi.fn();
+const mockGetDrawingThumbnail = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   StartSession: (...args: any[]) => mockStartSession(...args),
@@ -21,6 +22,7 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
   ImportDrawingFile: (...args: any[]) => mockImportDrawingFile(...args),
   DeleteDrawingDocument: (...args: any[]) => mockDeleteDrawingDocument(...args),
   ResumeDrawing: (...args: any[]) => mockResumeDrawing(...args),
+  GetDrawingThumbnail: (...args: any[]) => mockGetDrawingThumbnail(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
@@ -56,6 +58,7 @@ describe('HomePage', () => {
     mockDiscardSession.mockResolvedValue(undefined);
     mockDeleteDrawingDocument.mockResolvedValue(undefined);
     mockResumeDrawing.mockImplementation(async (id: string) => ({ id }));
+    mockGetDrawingThumbnail.mockResolvedValue('data:image/png;base64,cHJldmlldw==');
   });
 
   it('renders the app title', () => {
@@ -232,8 +235,8 @@ describe('HomePage', () => {
     });
     expect(screen.getByTestId('resume-status-session-042')).toHaveTextContent('Submitted');
     expect(screen.getByTestId('resume-btn-session-042')).toHaveTextContent('Keep drawing');
-    // A submitted drawing is graded; there is nothing left to discard.
-    expect(screen.queryByTestId('resume-discard-session-042')).not.toBeInTheDocument();
+    // A submitted drawing can be deleted too — its score and feedback stay.
+    expect(screen.getByTestId('resume-delete-session-042')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('resume-btn-session-042'));
 
@@ -262,7 +265,7 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('session-page')).not.toBeInTheDocument();
   });
 
-  it('drops a session from the resume list when it is discarded', async () => {
+  it('drops a drawing from the list when it is deleted', async () => {
     mockListResumableSessions.mockResolvedValueOnce([savedDrawing({ operationCount: 1 })]);
     mockListResumableSessions.mockResolvedValue([]);
     const user = userEvent.setup();
@@ -276,7 +279,8 @@ describe('HomePage', () => {
       expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId('resume-discard-session-042'));
+    await user.click(screen.getByTestId('resume-delete-session-042'));
+    await user.click(screen.getByTestId('resume-delete-confirm-session-042'));
 
     expect(mockDiscardSession).toHaveBeenCalledWith('session-042');
     await waitFor(() => expect(mockDeleteDrawingDocument).toHaveBeenCalledWith('session-042'));
@@ -296,5 +300,90 @@ describe('HomePage', () => {
       expect(screen.getByText('Simple Face')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
+  });
+
+  // Reference titles repeat across sessions, so the drawing itself is what
+  // tells one attempt from another.
+  it('shows a preview of each drawing', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-preview-session-042')).toBeInTheDocument();
+    });
+    const preview = screen.getByTestId('resume-preview-session-042') as HTMLImageElement;
+    expect(preview.src).toBe('data:image/png;base64,cHJldmlldw==');
+    expect(mockGetDrawingThumbnail).toHaveBeenCalledWith('session-042');
+  });
+
+  it('keeps a placeholder for a drawing with no preview yet', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    mockGetDrawingThumbnail.mockResolvedValue('');
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('resume-preview-session-042')).not.toBeInTheDocument();
+    // The row still works without one.
+    expect(screen.getByTestId('resume-btn-session-042')).toBeInTheDocument();
+  });
+
+  // Deleting a drawing is not recoverable, so it asks first.
+  it('asks before deleting, and lets the artist back out', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('resume-delete-session-042'));
+    expect(screen.getByText('Delete this drawing?')).toBeInTheDocument();
+    expect(mockDeleteDrawingDocument).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('resume-delete-cancel-session-042'));
+    expect(screen.queryByText('Delete this drawing?')).not.toBeInTheDocument();
+    expect(mockDeleteDrawingDocument).not.toHaveBeenCalled();
+    expect(screen.getByTestId('resume-btn-session-042')).toBeInTheDocument();
+  });
+
+  it('deletes a submitted drawing without touching its score or feedback', async () => {
+    mockListResumableSessions.mockResolvedValueOnce([
+      savedDrawing({ status: 'completed' }),
+    ]);
+    mockListResumableSessions.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('resume-delete-session-042'));
+    await user.click(screen.getByTestId('resume-delete-confirm-session-042'));
+
+    // Only the drawing goes; a submitted session is left completed.
+    await waitFor(() => expect(mockDeleteDrawingDocument).toHaveBeenCalledWith('session-042'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('resume-sessions')).not.toBeInTheDocument();
+    });
   });
 });

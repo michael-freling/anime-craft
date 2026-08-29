@@ -83,6 +83,9 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
   // The drawing itself: an operation log and how far into it we are.
   const operationsRef = useRef<Operation[]>([]);
   const cursorRef = useRef(-1);
+  // Operations before this were inherited from the drawing the session began
+  // with, so undo stops here rather than unpicking work done elsewhere.
+  const baseIndexRef = useRef(0);
   const strokesRef = useRef<Map<string, Stroke[]>>(new Map());
 
   // What autosave still owes the store. pendingFrom is the earliest index
@@ -124,7 +127,7 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
   const syncHistoryFlags = useCallback(() => {
     setToolState((prev) => ({
       ...prev,
-      canUndo: cursorRef.current >= 0,
+      canUndo: cursorRef.current >= baseIndexRef.current,
       canRedo: cursorRef.current < operationsRef.current.length - 1,
     }));
   }, []);
@@ -366,7 +369,7 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
   }, []);
 
   const undo = useCallback(() => {
-    if (cursorRef.current < 0) return;
+    if (cursorRef.current < baseIndexRef.current) return;
     cursorRef.current -= 1;
     syncFromLog({ keepActive: false });
     setRevision((value) => value + 1);
@@ -446,6 +449,7 @@ export function useDrawingCanvas(): UseDrawingCanvasReturn {
     (scene: Scene) => {
       operationsRef.current = scene.operations;
       cursorRef.current = scene.cursor;
+      baseIndexRef.current = scene.baseIndex ?? 0;
       strokeCounterRef.current = scene.operations.length;
 
       documentSizeRef.current = scene.document;

@@ -38,6 +38,7 @@ type State struct {
 	Tool           *ToolState     `json:"tool,omitempty"`
 	Reference      *ReferenceInfo `json:"reference,omitempty"`
 	Cursor         int            `json:"cursor"`
+	BaseIndex      int            `json:"baseIndex"`
 	OperationCount int            `json:"operationCount"`
 	Revision       int            `json:"revision"`
 	UpdatedAt      time.Time      `json:"updatedAt"`
@@ -91,6 +92,9 @@ func (s *Store) Append(sessionID string, req AppendRequest) (State, error) {
 	if req.FromIndex < 0 || req.FromIndex > state.OperationCount {
 		return State{}, fmt.Errorf("operations start at %d but the log holds %d: a save is missing", req.FromIndex, state.OperationCount)
 	}
+	if req.FromIndex < state.BaseIndex {
+		return State{}, fmt.Errorf("operations start at %d, inside the %d the drawing was started from", req.FromIndex, state.BaseIndex)
+	}
 
 	journalPath := filepath.Join(dir, journalFileName)
 	if req.FromIndex < state.OperationCount {
@@ -111,7 +115,9 @@ func (s *Store) Append(sessionID string, req AppendRequest) (State, error) {
 
 	state.Version = SceneVersion
 	state.OperationCount = req.FromIndex + len(req.Operations)
-	state.Cursor = clampCursor(req.Cursor, state.OperationCount)
+	// BaseIndex is set once, when the session is seeded from another drawing;
+	// an autosave never moves it.
+	state.Cursor = clampCursor(req.Cursor, state.OperationCount, state.BaseIndex)
 	state.Revision++
 	state.UpdatedAt = time.Now()
 	if req.Document.valid() {
@@ -180,7 +186,8 @@ func (s *Store) Load(sessionID string) (*Scene, error) {
 		Reference:     state.Reference,
 		Tool:          state.Tool,
 		ActiveLayerID: state.ActiveLayerID,
-		Cursor:        clampCursor(state.Cursor, len(ops)),
+		Cursor:        clampCursor(state.Cursor, len(ops), state.BaseIndex),
+		BaseIndex:     state.BaseIndex,
 		Operations:    ops,
 		Revision:      state.Revision,
 		SavedAt:       state.UpdatedAt,
@@ -213,7 +220,8 @@ func (s *Store) Import(sessionID string, scene *Scene) (State, error) {
 		ActiveLayerID:  scene.ActiveLayerID,
 		Tool:           scene.Tool,
 		Reference:      scene.Reference,
-		Cursor:         clampCursor(scene.Cursor, len(scene.Operations)),
+		Cursor:         clampCursor(scene.Cursor, len(scene.Operations), scene.BaseIndex),
+		BaseIndex:      scene.BaseIndex,
 		OperationCount: len(scene.Operations),
 		Revision:       1,
 		UpdatedAt:      time.Now(),
@@ -224,12 +232,18 @@ func (s *Store) Import(sessionID string, scene *Scene) (State, error) {
 	return state, nil
 }
 
-func clampCursor(cursor, count int) int {
+// clampCursor keeps the cursor inside the log and above the inherited part of
+// it, so undo can never reach below the drawing the session started from.
+func clampCursor(cursor, count, baseIndex int) int {
 	if cursor > count-1 {
-		return count - 1
+		cursor = count - 1
 	}
-	if cursor < -1 {
-		return -1
+	floor := baseIndex - 1
+	if floor < -1 {
+		floor = -1
+	}
+	if cursor < floor {
+		return floor
 	}
 	return cursor
 }
