@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -15,17 +16,17 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// MaxMessageBytes is how large a request or response may be. gRPC defaults to
-// 4MB, which a request carrying two images goes past as soon as the reference
-// is a photograph rather than a small line drawing — a 4.4MB request was being
-// refused outright. The service runs on the loopback interface beside the app,
-// so the ceiling can be generous; it is here to catch something absurd, not to
-// ration bandwidth.
+// unlimitedMessageBytes removes gRPC's 4MB cap on what may be received.
 //
-// The Python side is configured with the same number (see
-// inference/src/animecraft_inference/server.py); both have to agree, because
-// whichever is lower is the one that refuses.
-const MaxMessageBytes = 32 * 1024 * 1024
+// A cap only chooses how large an image has to be before the app fails; it
+// never stops there being a larger one. What keeps requests small is
+// shrinkForInference, which sends no image larger than either model can look
+// at — so this is a backstop for what that cannot help with, such as a format
+// Go does not decode and therefore passes through whole.
+//
+// Go has no sentinel for "no limit", so this is its largest int32; the Python
+// side uses gRPC's own -1 for the same thing.
+const unlimitedMessageBytes = math.MaxInt32
 
 // Client wraps the gRPC connection to the Python inference service.
 // It implements bff.LineArtExtractor and bff.FeedbackGenerator.
@@ -39,8 +40,8 @@ func New(ctx context.Context, addr string) (*Client, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(MaxMessageBytes),
-			grpc.MaxCallSendMsgSize(MaxMessageBytes),
+			grpc.MaxCallRecvMsgSize(unlimitedMessageBytes),
+			grpc.MaxCallSendMsgSize(unlimitedMessageBytes),
 		),
 	)
 	if err != nil {
@@ -61,7 +62,7 @@ func (c *Client) Close() error {
 // Python inference service and returns the extracted line art PNG.
 func (c *Client) Extract(imageData []byte) ([]byte, error) {
 	resp, err := c.client.ExtractLineArt(context.Background(), &pb.ExtractLineArtRequest{
-		ImageData: imageData,
+		ImageData: shrinkForInference(imageData),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("extract line art via gRPC: %w", err)
@@ -74,8 +75,8 @@ func (c *Client) Extract(imageData []byte) ([]byte, error) {
 // retries with exponential backoff up to 2 minutes.
 func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, drawingPNG []byte, exerciseMode string) (*pb.FeedbackResult, error) {
 	req := &pb.GenerateFeedbackRequest{
-		ReferenceLineArtPng: referenceLineArt,
-		DrawingPng:          drawingPNG,
+		ReferenceLineArtPng: shrinkForInference(referenceLineArt),
+		DrawingPng:          shrinkForInference(drawingPNG),
 		ExerciseMode:        exerciseMode,
 	}
 
@@ -159,8 +160,8 @@ func (c *Client) doGenerateFeedback(ctx context.Context, req *pb.GenerateFeedbac
 // an SSIM heatmap PNG.
 func (c *Client) CompareImages(ctx context.Context, referenceLineArt []byte, drawingPNG []byte) ([]byte, error) {
 	resp, err := c.client.CompareImages(ctx, &pb.CompareImagesRequest{
-		ReferenceLineArtPng: referenceLineArt,
-		DrawingPng:          drawingPNG,
+		ReferenceLineArtPng: shrinkForInference(referenceLineArt),
+		DrawingPng:          shrinkForInference(drawingPNG),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("compare images via gRPC: %w", err)

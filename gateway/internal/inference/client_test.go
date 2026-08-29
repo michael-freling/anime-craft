@@ -3,6 +3,9 @@ package inference
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/png"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -142,11 +145,11 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 	t.Helper()
 
 	listener := bufconn.Listen(bufSize)
-	// Configured the way the real pair is, so the tests exercise the limits
-	// the app actually runs with rather than gRPC's defaults.
+	// Configured the way the real pair is, so the tests exercise what the app
+	// actually runs with rather than gRPC's defaults.
 	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(MaxMessageBytes),
-		grpc.MaxSendMsgSize(MaxMessageBytes),
+		grpc.MaxRecvMsgSize(unlimitedMessageBytes),
+		grpc.MaxSendMsgSize(unlimitedMessageBytes),
 	)
 	pb.RegisterInferenceServiceServer(grpcServer, srv)
 
@@ -164,8 +167,8 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(MaxMessageBytes),
-			grpc.MaxCallSendMsgSize(MaxMessageBytes),
+			grpc.MaxCallRecvMsgSize(unlimitedMessageBytes),
+			grpc.MaxCallSendMsgSize(unlimitedMessageBytes),
 		),
 	)
 	if err != nil {
@@ -445,28 +448,27 @@ func TestWorthRetrying(t *testing.T) {
 	}
 }
 
-// Both ends have to agree on the ceiling, because whichever is lower is the
-// one that refuses. This pins the Go half; the Python half is pinned in
-// inference/tests/test_server.py.
-func TestMaxMessageBytes(t *testing.T) {
-	assert.Equal(t, 32*1024*1024, MaxMessageBytes,
-		"changing this means changing MAX_MESSAGE_BYTES in the inference service too")
+// Nothing is refused for being large. A fixed ceiling would only choose how
+// big an image has to be before the app fails.
+func TestNoMessageSizeCeiling(t *testing.T) {
+	assert.Equal(t, math.MaxInt32, unlimitedMessageBytes,
+		"the inference service uses gRPC's own -1 for the same thing")
 }
 
-// The reported failure: a request carrying a photographic reference and a
-// drawing came to 4.4MB and was refused by gRPC's 4MB default.
-func TestGenerateFeedback_CarriesImagesPastTheOldFourMegabyteCeiling(t *testing.T) {
+// The reported failure: a photographic reference and a drawing came to 4.4MB
+// together and were refused by gRPC's 4MB default. The photograph now arrives
+// as something neither model would have looked past anyway.
+func TestGenerateFeedback_SendsAPhotographTheModelsCanUse(t *testing.T) {
 	srv := &fakeInferenceServer{
 		feedbackResult: &pb.FeedbackResult{OverallScore: 70, Summary: "ok"},
 	}
 	client := startTestServer(t, srv)
 
-	// Comfortably past the old ceiling, and the size that was being refused.
-	reference := bytes.Repeat([]byte{0xA5}, 4_425_484)
-	drawing := bytes.Repeat([]byte{0x5A}, 512*1024)
+	reference := photographPNG(t, 4000, 3000)
+	require.Greater(t, len(reference), 4*1024*1024, "the kind of upload that was being refused")
+	drawing := photographPNG(t, 1024, 768)
 
 	result, err := client.GenerateFeedback(context.Background(), reference, drawing, "line_work")
-
 	require.NoError(t, err)
 	assert.Equal(t, int32(70), result.GetOverallScore())
 
@@ -474,19 +476,66 @@ func TestGenerateFeedback_CarriesImagesPastTheOldFourMegabyteCeiling(t *testing.
 	received := srv.feedbackReceivedReq
 	srv.feedbackReceivedMu.Unlock()
 	require.NotNil(t, received)
-	assert.Len(t, received.GetReferenceLineArtPng(), len(reference), "the whole reference arrived")
-	assert.Len(t, received.GetDrawingPng(), len(drawing), "the whole drawing arrived")
+
+	assert.Less(t, len(received.GetReferenceLineArtPng()), len(reference),
+		"the reference was shrunk rather than sent whole")
+	assertWithinModelInput(t, received.GetReferenceLineArtPng())
+	// A drawing already within the bound is passed through untouched.
+	assert.Equal(t, drawing, received.GetDrawingPng())
 }
 
-// And a response the same size comes back, since the limit applies both ways.
-func TestExtractLineArt_ReturnsImagesPastTheOldCeiling(t *testing.T) {
+// Nothing is rejected for being large, whichever way it travels.
+func TestExtractLineArt_AcceptsAResponseOfAnySize(t *testing.T) {
 	srv := &fakeInferenceServer{
 		extractResponse: bytes.Repeat([]byte{0x11}, 6*1024*1024),
 	}
 	client := startTestServer(t, srv)
 
-	lineArt, err := client.Extract(bytes.Repeat([]byte{0x22}, 5*1024*1024))
+	lineArt, err := client.Extract(photographPNG(t, 3000, 2000))
 
 	require.NoError(t, err)
 	assert.Len(t, lineArt, 6*1024*1024)
+}
+
+// An image Go cannot decode is sent as it is rather than failing the request,
+// which is what the removed ceiling is there for.
+func TestCompareImages_SendsAnUndecodableImageAsItIs(t *testing.T) {
+	srv := &fakeInferenceServer{compareResponse: []byte("heatmap")}
+	client := startTestServer(t, srv)
+
+	// Larger than gRPC's old default, and not an image format Go knows.
+	opaque := bytes.Repeat([]byte{0x7F}, 5*1024*1024)
+
+	heatmap, err := client.CompareImages(context.Background(), opaque, opaque)
+
+	require.NoError(t, err)
+	assert.Equal(t, []byte("heatmap"), heatmap)
+	srv.compareReceivedMu.Lock()
+	received := srv.compareReceivedReq
+	srv.compareReceivedMu.Unlock()
+	require.NotNil(t, received)
+	assert.Len(t, received.GetReferenceLineArtPng(), len(opaque))
+}
+
+// photographPNG builds a PNG with enough variation that it does not compress
+// away to nothing, so the sizes in these tests are realistic.
+func photographPNG(t *testing.T, width int, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	seed := uint32(12345)
+	for i := 0; i < len(img.Pix); i++ {
+		seed = seed*1664525 + 1013904223
+		img.Pix[i] = uint8(seed >> 24)
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+func assertWithinModelInput(t *testing.T, data []byte) {
+	t.Helper()
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	require.NoError(t, err)
+	assert.LessOrEqual(t, decoded.Bounds().Dx(), maxImageEdge)
+	assert.LessOrEqual(t, decoded.Bounds().Dy(), maxImageEdge)
 }

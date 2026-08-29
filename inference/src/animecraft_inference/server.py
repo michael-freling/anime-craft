@@ -40,16 +40,16 @@ except ImportError:
     raise
 
 
-# How large a request or response may be. gRPC defaults to 4MB, which a request
-# carrying two images goes past as soon as the reference is a photograph rather
-# than a small line drawing. The service listens on loopback beside the app, so
-# the ceiling can be generous; it is here to catch something absurd, not to
-# ration bandwidth.
+# gRPC's own value for "no limit". Its 4MB default refused a request carrying a
+# photographic reference outright, and any fixed number in its place would only
+# choose how large an image has to be before the app fails rather than stopping
+# there being a larger one.
 #
-# The Go side is configured with the same number (see
-# gateway/internal/inference/client.go); both have to agree, because whichever
-# is lower is the one that refuses.
-MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+# The gateway shrinks images to what the models can actually look at before
+# sending them, so requests are small whatever was uploaded; this is here so
+# that the cases it cannot help with — a format it does not decode, and so
+# passes through whole — arrive rather than being rejected.
+UNLIMITED_MESSAGE_BYTES = -1
 
 logger = logging.getLogger(__name__)
 
@@ -250,8 +250,8 @@ def serve(config: Config) -> None:
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
-            ("grpc.max_receive_message_length", MAX_MESSAGE_BYTES),
-            ("grpc.max_send_message_length", MAX_MESSAGE_BYTES),
+            ("grpc.max_receive_message_length", UNLIMITED_MESSAGE_BYTES),
+            ("grpc.max_send_message_length", UNLIMITED_MESSAGE_BYTES),
         ],
     )
     servicer = InferenceServicer(lineart_extractor, feedback_generator)

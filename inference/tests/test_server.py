@@ -31,9 +31,10 @@ def test_environment_is_used_when_no_flags_are_given(monkeypatch):
     assert config.listen_address == "127.0.0.1:50123"
 
 
-def test_the_server_accepts_messages_larger_than_the_grpc_default():
-    """A request carrying two images goes past gRPC's 4MB default as soon as
-    the reference is a photograph, and was being refused outright."""
+def test_the_server_places_no_limit_on_message_size():
+    """gRPC's 4MB default refused a request carrying a photographic reference.
+    Any fixed number in its place would only choose how large an image has to
+    be before the app fails, rather than stopping there being a larger one."""
     with (
         patch.object(server.grpc, "server") as mock_grpc_server,
         patch.object(server, "LineArtExtractor"),
@@ -46,11 +47,6 @@ def test_the_server_accepts_messages_larger_than_the_grpc_default():
         server.serve(Config(grpc_host="127.0.0.1", grpc_port=0))
 
     options = dict(mock_grpc_server.call_args.kwargs["options"])
-    assert options["grpc.max_receive_message_length"] == server.MAX_MESSAGE_BYTES
-    assert options["grpc.max_send_message_length"] == server.MAX_MESSAGE_BYTES
-
-
-def test_the_size_limit_matches_the_gateway():
-    """Both ends have to agree, because whichever is lower is the one that
-    refuses. The Go half is pinned in gateway/internal/inference/client_test.go."""
-    assert server.MAX_MESSAGE_BYTES == 32 * 1024 * 1024
+    assert options["grpc.max_receive_message_length"] == -1
+    assert options["grpc.max_send_message_length"] == -1
+    assert server.UNLIMITED_MESSAGE_BYTES == -1
