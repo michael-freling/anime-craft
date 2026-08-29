@@ -5,17 +5,20 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SessionPage from '../../pages/SessionPage';
 
 // Autosave debounces, so an assertion about it has to outwait the debounce.
-const SAVE_TIMEOUT = 4000;
+// Generous on purpose: the whole suite runs in parallel, and this ceiling only
+// matters when a save genuinely never happens.
+const SAVE_TIMEOUT = 10000;
 
 const mockGetSession = vi.fn();
 const mockGetReference = vi.fn();
 const mockSaveDrawing = vi.fn();
 const mockEndSession = vi.fn();
 const mockDiscardSession = vi.fn();
-const mockLoadDrawingDocument = vi.fn();
+const mockOpenDrawingDocument = vi.fn();
 const mockSaveDrawingOperations = vi.fn();
 const mockExportDrawingFile = vi.fn();
 const mockDeleteDrawingDocument = vi.fn();
+const mockFlushDrawingDocument = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   GetSession: (...args: any[]) => mockGetSession(...args),
@@ -32,10 +35,11 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
   SaveDrawing: (...args: any[]) => mockSaveDrawing(...args),
-  LoadDrawingDocument: (...args: any[]) => mockLoadDrawingDocument(...args),
+  OpenDrawingDocument: (...args: any[]) => mockOpenDrawingDocument(...args),
   SaveDrawingOperations: (...args: any[]) => mockSaveDrawingOperations(...args),
   ExportDrawingFile: (...args: any[]) => mockExportDrawingFile(...args),
   DeleteDrawingDocument: (...args: any[]) => mockDeleteDrawingDocument(...args),
+  FlushDrawingDocument: (...args: any[]) => mockFlushDrawingDocument(...args),
 }));
 
 function renderSessionPage() {
@@ -66,12 +70,13 @@ describe('SessionPage', () => {
     mockGetReferenceImageData.mockResolvedValue(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
     );
-    mockLoadDrawingDocument.mockResolvedValue('');
+    mockOpenDrawingDocument.mockResolvedValue('');
     mockSaveDrawingOperations.mockResolvedValue({ revision: 1, operationCount: 1 });
     mockSaveDrawing.mockResolvedValue({ id: 'drawing-001' });
     mockEndSession.mockResolvedValue({ id: 'session-001' });
     mockDiscardSession.mockResolvedValue(undefined);
     mockDeleteDrawingDocument.mockResolvedValue(undefined);
+    mockFlushDrawingDocument.mockResolvedValue({ revision: 1 });
   });
 
   it('renders loading state initially', () => {
@@ -149,7 +154,7 @@ describe('SessionPage', () => {
   });
 
   it('restores the saved drawing before letting anything be saved over it', async () => {
-    mockLoadDrawingDocument.mockResolvedValue(
+    mockOpenDrawingDocument.mockResolvedValue(
       JSON.stringify({
         version: 1,
         document: { width: 1024, height: 768 },
@@ -181,7 +186,7 @@ describe('SessionPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('layer-canvas-layer-2')).toBeInTheDocument();
     });
-    expect(mockLoadDrawingDocument).toHaveBeenCalledWith('session-001');
+    expect(mockOpenDrawingDocument).toHaveBeenCalledWith('session-001');
     // The layer that was being worked on, the tool in hand and the undo
     // history all come back with the strokes.
     expect(screen.getByTestId('layer-item-layer-2')).toHaveClass('active');
@@ -194,7 +199,7 @@ describe('SessionPage', () => {
   });
 
   it('carries on from a saved drawing that was left mid-undo', async () => {
-    mockLoadDrawingDocument.mockResolvedValue(
+    mockOpenDrawingDocument.mockResolvedValue(
       JSON.stringify({
         version: 1,
         document: { width: 1024, height: 768 },
@@ -222,7 +227,7 @@ describe('SessionPage', () => {
     const user = userEvent.setup();
     renderSessionPage();
 
-    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
     await user.click(screen.getByTestId('layer-add'));
 
     // Autosave waits for a pause in the drawing before it writes.
@@ -249,7 +254,7 @@ describe('SessionPage', () => {
     const user = userEvent.setup();
     renderSessionPage();
 
-    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
     await user.click(screen.getByTestId('layer-add'));
     await waitFor(() => expect(mockSaveDrawingOperations).toHaveBeenCalledTimes(1), {
       timeout: SAVE_TIMEOUT,
@@ -271,7 +276,7 @@ describe('SessionPage', () => {
     const user = userEvent.setup();
     renderSessionPage();
 
-    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
     await user.click(screen.getByTestId('layer-add'));
 
     await waitFor(
@@ -288,7 +293,7 @@ describe('SessionPage', () => {
     const user = userEvent.setup();
     renderSessionPage();
 
-    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
     await user.click(screen.getByTestId('discard-btn'));
 
     await waitFor(() => {
@@ -305,7 +310,7 @@ describe('SessionPage', () => {
     const user = userEvent.setup();
     renderSessionPage();
 
-    await waitFor(() => expect(mockLoadDrawingDocument).toHaveBeenCalled());
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
     await user.click(screen.getByTestId('discard-btn'));
 
     // The artist is not trapped on the page by a failed discard.
@@ -319,5 +324,58 @@ describe('SessionPage', () => {
     renderSessionPage();
 
     expect(screen.getByTestId('export-btn')).toBeInTheDocument();
+  });
+
+  // Coming back to a drawing begins a new sitting — the timer restarts too —
+  // so undo covers this sitting's work rather than reaching into the last.
+  it('starts undo from what is already on the drawing', async () => {
+    mockOpenDrawingDocument.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        document: { width: 1024, height: 768 },
+        activeLayerId: 'layer-1',
+        cursor: 1,
+        baseIndex: 2,
+        operations: [
+          {
+            type: 'add_stroke',
+            stroke: {
+              id: 's1',
+              layerId: 'layer-1',
+              tool: 'brush',
+              color: '#000000',
+              size: 2,
+              points: [10, 10, 200, 200],
+            },
+          },
+          {
+            type: 'add_layer',
+            layer: { id: 'layer-2', name: 'Layer 2', visible: true },
+          },
+        ],
+      })
+    );
+
+    renderSessionPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('layer-canvas-layer-2')).toBeInTheDocument();
+    });
+    // The earlier work is on the canvas, and it is the starting point.
+    expect(screen.getByTestId('btn-undo')).toBeDisabled();
+    expect(screen.getByTestId('btn-redo')).toBeDisabled();
+  });
+
+  // Leaving is when the home screen next shows this drawing, and the preview
+  // it shows lives in the checkpoint.
+  it('brings the checkpoint up to date when the drawing is left', async () => {
+    const { unmount } = renderSessionPage();
+    await waitFor(() => expect(mockOpenDrawingDocument).toHaveBeenCalled());
+
+    unmount();
+
+    await waitFor(() => {
+      expect(mockFlushDrawingDocument).toHaveBeenCalledWith('session-001');
+    });
   });
 });

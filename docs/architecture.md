@@ -127,7 +127,7 @@ The drawing canvas uses the **HTML5 Canvas API** directly, one canvas per layer.
 - Undo / redo
 - Export canvas to PNG (for submission to AI feedback)
 
-The drawing is held as an **ordered log of vector operations** plus a cursor saying how many of them apply; undo moves the cursor rather than restoring pixels. That is what makes it saveable — see [Saving drawings](drawing-file-format.md) — and it removes the memory ceiling that bitmap-snapshot undo imposed. Strokes are stored in document units on a fixed-size page, so a drawing keeps its proportions at any window size.
+The drawing is held as an **ordered log of vector operations** plus a cursor saying how many of them apply; undo moves the cursor rather than restoring pixels, and is scoped to the current sitting. That is what makes it saveable — see [Saving drawings](drawing-file-format.md) — and it removes the memory ceiling that bitmap-snapshot undo imposed. Strokes are stored in document units on a fixed-size page, so a drawing keeps its proportions at any window size.
 
 The log lives in a local `useRef` and is not part of React state, so a stroke in progress causes no re-renders.
 

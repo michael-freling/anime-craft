@@ -68,9 +68,11 @@ The document model is one idea, shared by the editor
 ```
 
 Undo moves the cursor back rather than deleting anything, so the operations
-past it are the redo stack — and because they are saved too, **undo survives
-closing the app**. Drawing something new after an undo discards that tail, in
-the editor and in the store alike.
+past it are the redo stack, and both survive the autosaves made while drawing.
+Drawing something new after an undo discards that tail, in the editor and in
+the store alike.
+
+Undo is scoped to a sitting: see [Undo belongs to the sitting](#undo-belongs-to-the-sitting).
 
 Points are a flat `[x0, y0, x1, y1, ...]` array rounded to a tenth of a
 document unit: about half the JSON of an array of objects, and finer than a
@@ -168,14 +170,30 @@ is a second copy of the drawing.
 It is offered from the home screen (**Keep drawing**) and from the feedback page
 (**Keep drawing on this**), where the suggestions are still on screen.
 
-The drawing that comes across is the **baseline** of the new session, recorded
-as `baseIndex` in the scene: the first `baseIndex` operations were inherited
-rather than made here, and undo stops at that line. Without it, undo in a fresh
-attempt would unpick strokes from a drawing that had already been submitted and
-graded. The store enforces the same line — a save that would rewrite the
-inherited operations is refused, so a stale editor cannot cross it either. The
-redo stack does not come across at all: it belonged to the session the drawing
-came from.
+The drawing that comes across is the new session's starting point, under the
+same rule as any other reopening — see below. It matters most here: without it,
+undo in a fresh attempt would unpick strokes from a drawing that had already
+been submitted and graded.
+
+### Undo belongs to the sitting
+
+Opening a drawing makes whatever is already on it the starting point, and undo
+covers the work done from there. The line is recorded as `baseIndex` in the
+scene: the first `baseIndex` operations were inherited rather than made in this
+sitting. The redo stack of the previous sitting is dropped at the same moment.
+
+The rule is the same however the drawing was opened — resumed after leaving it,
+carried on from a submitted attempt, or imported from a file — because they are
+the same thing from the artist's side: coming back to a drawing. The session
+timer restarts on the same event, so the two agree about where a sitting begins.
+
+The alternative is worse: opening a drawing made days ago and pressing undo
+would pick it apart a stroke at a time, with the strokes it eats belonging to
+work the artist considers finished. What is never lost is the drawing itself —
+undo scope changes, artwork does not.
+
+The store holds the same line, refusing a save that would rewrite anything
+below it, so a stale editor cannot cross it either.
 
 ### Previews
 

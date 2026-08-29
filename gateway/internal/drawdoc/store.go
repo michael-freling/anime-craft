@@ -196,6 +196,59 @@ func (s *Store) Load(sessionID string) (*Scene, error) {
 	return scene, nil
 }
 
+// Reopen loads a drawing to be worked on again, and makes what is already on
+// it the starting point for this sitting.
+//
+// Coming back to a drawing begins a new sitting — the session timer restarts
+// too — so undo belongs to the work done from here rather than reaching back
+// into a previous one. Without this, opening a drawing left days ago and
+// pressing undo would pick it apart a stroke at a time. Undo and redo still
+// survive autosaves within a sitting; what does not cross a reopen is the
+// history of the last one.
+func (s *Store) Reopen(sessionID string) (*Scene, error) {
+	scene, err := s.Load(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	countBefore := len(scene.Operations)
+	scene.Seed()
+	if scene.BaseIndex == 0 && countBefore == 0 {
+		return scene, nil
+	}
+
+	state, err := s.readState(sessionID)
+	if err != nil {
+		// The drawing came from a file rather than the journal; it will get a
+		// state of its own on the first save.
+		if errors.Is(err, ErrNotFound) {
+			return scene, nil
+		}
+		return nil, err
+	}
+	if state.BaseIndex == scene.BaseIndex && state.OperationCount == len(scene.Operations) && state.Cursor == scene.Cursor {
+		return scene, nil
+	}
+
+	// Only rewrite the journal when the redo stack of the last sitting is
+	// actually being dropped.
+	if len(scene.Operations) != countBefore {
+		if err := writeJournal(filepath.Join(s.Dir(sessionID), journalFileName), scene.Operations); err != nil {
+			return nil, err
+		}
+	}
+
+	state.OperationCount = len(scene.Operations)
+	state.Cursor = scene.Cursor
+	state.BaseIndex = scene.BaseIndex
+	// Revision and UpdatedAt are left alone: opening a drawing is not a change
+	// to it, and must not push it to the top of the home screen.
+	if err := s.writeState(sessionID, state); err != nil {
+		return nil, err
+	}
+	return scene, nil
+}
+
 // Delete removes everything saved for a session.
 func (s *Store) Delete(sessionID string) error {
 	if err := os.RemoveAll(s.Dir(sessionID)); err != nil {

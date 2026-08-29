@@ -16,7 +16,7 @@ import { GetSession } from "../../bindings/github.com/michael-freling/anime-craf
 import {
   ExportDrawingFile,
   FlushDrawingDocument,
-  LoadDrawingDocument,
+  OpenDrawingDocument,
   SaveDrawing,
   SaveDrawingOperations,
 } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
@@ -96,12 +96,14 @@ function SessionPageInner() {
     };
   }, [id, dispatch]);
 
-  // Put the saved drawing back before anything can be saved over it.
+  // Put the saved drawing back before anything can be saved over it. Opening
+  // it also makes what is already on the drawing the starting point for this
+  // sitting, so undo does not reach back into the last one.
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
 
-    LoadDrawingDocument(id)
+    OpenDrawingDocument(id)
       .then((raw: string) => {
         if (cancelled) return;
         const scene = parseScene(raw);

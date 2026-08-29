@@ -29,17 +29,22 @@ const (
 	checkpointEvery          = 2 * time.Minute
 )
 
-// LoadDrawingDocument returns the saved scene for a session as JSON, or an
-// empty string when the session has never been saved. The editor rebuilds
-// layers, strokes and its undo history from it.
-func (s *DrawingService) LoadDrawingDocument(sessionID string) (string, error) {
-	scene, err := s.store.Load(sessionID)
+// OpenDrawingDocument returns the saved scene for a session as JSON, or an
+// empty string when the session has never been saved. The editor rebuilds its
+// layers and strokes from it.
+//
+// Opening a drawing makes what is already on it the starting point for this
+// sitting, so undo covers the work done from here rather than reaching back
+// into a previous one. It is therefore a change to the drawing's state, not a
+// plain read — hence Open rather than Load.
+func (s *DrawingService) OpenDrawingDocument(sessionID string) (string, error) {
+	scene, err := s.store.Reopen(sessionID)
 	if errors.Is(err, drawdoc.ErrNotFound) {
 		return "", nil
 	}
 	if err != nil {
-		slog.Error("failed to load drawing document", "method", "LoadDrawingDocument", "sessionID", sessionID, "error", err)
-		return "", fmt.Errorf("load drawing document: %w", err)
+		slog.Error("failed to open drawing document", "method", "OpenDrawingDocument", "sessionID", sessionID, "error", err)
+		return "", fmt.Errorf("open drawing document: %w", err)
 	}
 
 	data, err := json.Marshal(scene)

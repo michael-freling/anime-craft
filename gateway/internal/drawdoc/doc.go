@@ -139,7 +139,9 @@ type Scene struct {
 	Tool          *ToolState     `json:"tool,omitempty"`
 	ActiveLayerID string         `json:"activeLayerId,omitempty"`
 	// Cursor is the index of the last applied operation; -1 means none.
-	// Operations after it are the redo stack, kept so undo survives a restart.
+	// Operations after it are the redo stack, kept so undo and redo survive
+	// the autosaves made while drawing. Reopening a drawing draws a line under
+	// them — see Store.Reopen.
 	Cursor int `json:"cursor"`
 	// BaseIndex marks operations the artist inherited rather than made: the
 	// first BaseIndex of them are the drawing this session started from, and

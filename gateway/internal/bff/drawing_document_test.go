@@ -107,7 +107,7 @@ func strokeOp(id string, points ...float64) map[string]any {
 func TestDrawingService_LoadWithoutAnySave(t *testing.T) {
 	f := newDrawingFixture(t)
 
-	scene, err := f.svc.LoadDrawingDocument(f.sessionID)
+	scene, err := f.svc.OpenDrawingDocument(f.sessionID)
 
 	require.NoError(t, err)
 	assert.Empty(t, scene, "a session that has never been drawn on has nothing to restore")
@@ -122,7 +122,7 @@ func TestDrawingService_SaveThenLoad(t *testing.T) {
 	assert.Equal(t, 0, result.Cursor)
 	assert.False(t, result.SavedAt.IsZero())
 
-	sceneJSON, err := f.svc.LoadDrawingDocument(f.sessionID)
+	sceneJSON, err := f.svc.OpenDrawingDocument(f.sessionID)
 	require.NoError(t, err)
 
 	var scene drawdoc.Scene
@@ -256,7 +256,7 @@ func TestDrawingService_ImportRestoresASessionFromAFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("reference-image-bytes"), restored)
 
-	sceneJSON, err := target.svc.LoadDrawingDocument(session.ID)
+	sceneJSON, err := target.svc.OpenDrawingDocument(session.ID)
 	require.NoError(t, err)
 	var scene drawdoc.Scene
 	require.NoError(t, json.Unmarshal([]byte(sceneJSON), &scene))
@@ -305,7 +305,7 @@ func TestDrawingService_DiscardDeletesTheSavedDrawing(t *testing.T) {
 
 	require.NoError(t, f.svc.DeleteDrawingDocument(f.sessionID))
 
-	scene, err := f.svc.LoadDrawingDocument(f.sessionID)
+	scene, err := f.svc.OpenDrawingDocument(f.sessionID)
 	require.NoError(t, err)
 	assert.Empty(t, scene)
 	_, err = os.Stat(filepath.Join(f.dataDir, "drawings", f.sessionID))
@@ -389,7 +389,7 @@ func TestDrawingService_ResumeDrawing_MovesTheDrawingRatherThanCopyingIt(t *test
 	assert.Equal(t, next.ID, resumable[0].ID)
 
 	// The drawing is gone from the attempt it came from, files and all.
-	scene, err := f.svc.LoadDrawingDocument(f.sessionID)
+	scene, err := f.svc.OpenDrawingDocument(f.sessionID)
 	require.NoError(t, err)
 	assert.Empty(t, scene)
 	_, err = os.Stat(filepath.Join(f.dataDir, "drawings", f.sessionID))
@@ -481,7 +481,7 @@ func TestDrawingService_ResumeDrawing_ContinuesFromASubmittedDrawing(t *testing.
 	assert.Equal(t, "line_work", next.ExerciseMode)
 
 	// The new session opens with the drawing already on the canvas.
-	sceneJSON, err := f.svc.LoadDrawingDocument(next.ID)
+	sceneJSON, err := f.svc.OpenDrawingDocument(next.ID)
 	require.NoError(t, err)
 	var scene drawdoc.Scene
 	require.NoError(t, json.Unmarshal([]byte(sceneJSON), &scene))
@@ -628,9 +628,95 @@ func TestDrawingService_GetDrawingThumbnail(t *testing.T) {
 
 func loadScene(t *testing.T, svc *DrawingService, sessionID string) drawdoc.Scene {
 	t.Helper()
-	raw, err := svc.LoadDrawingDocument(sessionID)
+	raw, err := svc.OpenDrawingDocument(sessionID)
 	require.NoError(t, err)
 	var scene drawdoc.Scene
 	require.NoError(t, json.Unmarshal([]byte(raw), &scene))
 	return scene
+}
+
+// Leaving a drawing and coming back begins a new sitting — the session timer
+// restarts too — so undo covers the work done from here rather than reaching
+// back into the last one.
+func TestDrawingService_OpenDrawingDocument_PreviousSittingIsTheStartingPoint(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 1,
+		strokeOp("s1", 10, 10, 200, 200),
+		strokeOp("s2", 20, 300, 400, 40),
+	))
+	require.NoError(t, err)
+
+	// Coming back to it draws the line at what is already on the drawing.
+	// (Within a sitting the redo stack is kept across autosaves — see
+	// TestStore_UndoKeepsTheRedoStack; it is reopening that draws the line.)
+	scene := loadScene(t, f.svc, f.sessionID)
+	assert.Equal(t, 2, scene.BaseIndex)
+	assert.Equal(t, 1, scene.Cursor)
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2, "the drawing itself is all still there")
+
+	// And the store holds the same line, so a stale editor cannot cross it.
+	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(1, 0, strokeOp("s9", 1, 1, 2, 2)))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the drawing was started from")
+}
+
+// The redo stack belongs to the sitting that made it. It survives autosaves
+// so undo works normally while drawing, but not a reopen.
+func TestDrawingService_OpenDrawingDocument_DropsTheLastSittingsRedoStack(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 1,
+		strokeOp("s1", 10, 10, 200, 200),
+		strokeOp("s2", 20, 300, 400, 40),
+	))
+	require.NoError(t, err)
+	// Undone, but still redoable during the sitting.
+	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(2, 0))
+	require.NoError(t, err)
+
+	scene := loadScene(t, f.svc, f.sessionID)
+
+	assert.Len(t, scene.Operations, 1, "what was undone does not come back on reopening")
+	assert.Equal(t, 1, scene.BaseIndex)
+	assert.Equal(t, 0, scene.Cursor)
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 1)
+}
+
+// Opening a drawing is not a change to it, so it must not jump to the top of
+// the home screen just for being looked at.
+func TestDrawingService_OpenDrawingDocument_DoesNotCountAsAChange(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 1, 1, 2, 2)))
+	require.NoError(t, err)
+
+	before, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+
+	_ = loadScene(t, f.svc, f.sessionID)
+	_ = loadScene(t, f.svc, f.sessionID)
+
+	after, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, after, 1)
+	assert.Equal(t, before[0].LastSavedAt, after[0].LastSavedAt)
+	assert.Equal(t, before[0].OperationCount, after[0].OperationCount)
+}
+
+// Carrying on from a drawing after reopening it still leaves one entry, and
+// the baseline moves forward rather than resetting.
+func TestDrawingService_OpenDrawingDocument_ThenKeepsDrawing(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+	_ = loadScene(t, f.svc, f.sessionID)
+
+	// A stroke made in this sitting is undoable; the one before it is not.
+	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(1, 1, strokeOp("s2", 5, 5, 6, 6)))
+	require.NoError(t, err)
+	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(2, 0))
+	require.NoError(t, err)
+
+	scene := loadScene(t, f.svc, f.sessionID)
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 1, "undo took back only this sitting's stroke")
+	assert.Equal(t, 1, scene.BaseIndex)
 }
