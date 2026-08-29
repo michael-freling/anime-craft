@@ -308,18 +308,14 @@ func TestDrawingService_DiscardDeletesTheSavedDrawing(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-// The home screen offers unfinished sessions by reading the index autosave
-// keeps up to date.
+// The home screen offers saved drawings by reading the index autosave keeps
+// up to date. A session with nothing drawn on it is not worth offering.
 func TestSessionService_ListResumableSessions(t *testing.T) {
 	f := newDrawingFixture(t)
 
 	resumable, err := f.sessionSvc.ListResumableSessions(10)
 	require.NoError(t, err)
-	require.Len(t, resumable, 1)
-	assert.Equal(t, f.sessionID, resumable[0].ID)
-	assert.Equal(t, "Simple Face", resumable[0].ReferenceTitle)
-	assert.Nil(t, resumable[0].LastSavedAt)
-	assert.Zero(t, resumable[0].OperationCount)
+	assert.Empty(t, resumable, "a session with nothing drawn on it has nothing to resume")
 
 	_, err = f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 1, 1, 2, 2)))
 	require.NoError(t, err)
@@ -327,14 +323,99 @@ func TestSessionService_ListResumableSessions(t *testing.T) {
 	resumable, err = f.sessionSvc.ListResumableSessions(10)
 	require.NoError(t, err)
 	require.Len(t, resumable, 1)
+	assert.Equal(t, f.sessionID, resumable[0].ID)
+	assert.Equal(t, "Simple Face", resumable[0].ReferenceTitle)
+	assert.Equal(t, "in_progress", resumable[0].Status)
 	assert.Equal(t, 1, resumable[0].OperationCount)
-	require.NotNil(t, resumable[0].LastSavedAt)
+	assert.False(t, resumable[0].LastSavedAt.IsZero())
 
-	// Discarding takes the session off the list without touching the others.
+	// Discarding takes the session off the list.
 	require.NoError(t, f.sessionSvc.DiscardSession(f.sessionID))
+	require.NoError(t, f.svc.DeleteDrawingDocument(f.sessionID))
 	resumable, err = f.sessionSvc.ListResumableSessions(10)
 	require.NoError(t, err)
 	assert.Empty(t, resumable)
+}
+
+// Submitting completes the session. Dropping the drawing off the home screen
+// at that moment would leave no way back to a session's worth of work, so a
+// finished drawing stays listed.
+func TestSessionService_ListResumableSessions_KeepsSubmittedDrawings(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1)
+	assert.Equal(t, f.sessionID, resumable[0].ID)
+	assert.Equal(t, "completed", resumable[0].Status)
+}
+
+func TestDrawingService_ResumeDrawing_UnfinishedSessionIsItself(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 1, 1, 2, 2)))
+	require.NoError(t, err)
+
+	resumed, err := f.svc.ResumeDrawing(f.sessionID)
+
+	require.NoError(t, err)
+	assert.Equal(t, f.sessionID, resumed.ID, "an unfinished session is picked up where it was left")
+}
+
+// A submitted session has been graded, so carrying on means a new attempt
+// holding the same artwork — leaving the graded one and its feedback alone.
+func TestDrawingService_ResumeDrawing_ContinuesFromASubmittedDrawing(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 1,
+		strokeOp("s1", 10, 10, 200, 200),
+		strokeOp("s2", 20, 300, 400, 40),
+	))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	next, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, f.sessionID, next.ID)
+	assert.Equal(t, "in_progress", next.Status)
+	assert.Equal(t, f.referenceID, next.ReferenceImageID, "the same reference is drawn from")
+	assert.Equal(t, "line_work", next.ExerciseMode)
+
+	// The new session opens with the drawing already on the canvas.
+	sceneJSON, err := f.svc.LoadDrawingDocument(next.ID)
+	require.NoError(t, err)
+	var scene drawdoc.Scene
+	require.NoError(t, json.Unmarshal([]byte(sceneJSON), &scene))
+	assert.Len(t, scene.Operations, 2)
+	assert.Equal(t, 1, scene.Cursor)
+
+	// The submitted session is untouched and still listed.
+	source, err := f.sessionSvc.GetSession(f.sessionID)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", source.Status)
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	assert.Len(t, resumable, 2)
+
+	// And it carries on autosaving on its own from there.
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(2, 2, strokeOp("s3", 5, 5, 6, 6)))
+	require.NoError(t, err)
+}
+
+func TestDrawingService_ResumeDrawing_WithoutASavedDrawing(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	_, err = f.svc.ResumeDrawing(f.sessionID)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load saved drawing")
 }
 
 func TestSessionService_DiscardIsIdempotent(t *testing.T) {

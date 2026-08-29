@@ -52,7 +52,7 @@ function HomePage() {
   return (
     <div className="home-page" data-testid="home-page">
       <h1>Anime Craft</h1>
-      <ResumeSessions onResume={(sessionId) => navigate(`/session/${sessionId}`)} />
+      <ResumeSessions onOpen={(sessionId) => navigate(`/session/${sessionId}`)} />
       <ReferenceImagePicker
         selectedRef={selectedRef}
         onSelectRef={setSelectedRef}

@@ -131,15 +131,30 @@ shown rather than swallowed, and retried — the work is still in the editor.
 
 - The session shows what has been written: *Saving…*, *Saved 14:05*, or
   *Not saved — retrying*.
-- The home screen lists unfinished sessions under **Continue drawing**, with
-  what was saved and when.
+- The home screen lists saved drawings under **Your drawings**, with what was
+  saved and when. Submitted drawings are listed alongside unfinished ones:
+  finishing a session must not be the moment a drawing becomes unreachable.
 - **Save a copy…** writes a `.ora` anywhere; **Open a saved drawing…** turns
   one back into a session, restoring its reference image if this machine does
   not already have it.
-- **Discard** takes the session off the resume list *and* deletes what autosave
-  kept for it. Both halves belong together: leaving the files behind would grow
-  the data directory for every abandoned session with nothing in the app able
-  to reach them.
+- **Discard** takes the session off the list *and* deletes what autosave kept
+  for it. Both halves belong together: leaving the files behind would grow the
+  data directory for every abandoned session with nothing in the app able to
+  reach them.
+
+### Carrying on from a finished drawing
+
+A submitted session has been graded: its flattened drawing and its feedback are
+recorded against it, one apiece. Reopening it would mean overwriting both, so
+carrying on instead opens a **new session already holding the same artwork** —
+the submitted attempt and its feedback stay as they are, and the next attempt
+earns feedback of its own, which is how the progress history is meant to read.
+
+`ResumeDrawing` decides which of the two it is, so the button never has to: an
+unfinished session is simply itself, a finished one is continued in a fresh
+session. It is offered from the home screen (**Keep drawing**) and from the
+feedback page (**Keep drawing on this**), where the suggestions are still on
+screen.
 
 ## Compatibility
 

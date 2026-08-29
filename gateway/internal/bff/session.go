@@ -82,9 +82,9 @@ func (s *SessionService) ListSessions(limit int, offset int) ([]model.Session, e
 	return sessions, nil
 }
 
-// ListResumableSessions returns the unfinished sessions the home screen
-// offers to pick back up. Autosave means every one of them still has its
-// drawing on disk.
+// ListResumableSessions returns the saved drawings the home screen offers to
+// pick back up, finished sessions included: a submitted drawing is still one
+// the artist may want to carry on with.
 func (s *SessionService) ListResumableSessions(limit int) ([]model.ResumableSession, error) {
 	if limit <= 0 {
 		limit = 10

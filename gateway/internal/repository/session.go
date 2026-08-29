@@ -73,18 +73,24 @@ func (r *SessionRepository) List(limit, offset int) ([]model.Session, error) {
 	return sessions, rows.Err()
 }
 
-// ListResumable returns the unfinished sessions the home screen offers to
-// pick back up, newest first. The reference title and autosave details come
-// from a join so the list needs one query rather than one per session.
+// ListResumable returns the sessions the home screen offers to pick back up,
+// most recently saved first.
+//
+// Submitting a drawing completes its session, so listing only unfinished ones
+// would drop a drawing off the home screen at the very moment the artist
+// finished it — leaving no way back to work they had just spent a session on.
+// Finished sessions are listed too; what makes a session listable is having a
+// saved drawing, which is why this joins rather than outer-joins on it.
+// Discarded sessions have had their drawing deleted, so they fall out here.
 func (r *SessionRepository) ListResumable(limit int) ([]model.ResumableSession, error) {
 	rows, err := r.db.Query(
-		`SELECT s.id, s.reference_image_id, COALESCE(ri.title, ''), s.exercise_mode, s.started_at,
-		        d.updated_at, COALESCE(d.operation_count, 0)
+		`SELECT s.id, s.reference_image_id, COALESCE(ri.title, ''), s.exercise_mode, s.status,
+		        s.started_at, d.updated_at, d.operation_count
 		 FROM sessions s
+		 JOIN drawing_documents d ON d.session_id = s.id
 		 LEFT JOIN reference_images ri ON ri.id = s.reference_image_id
-		 LEFT JOIN drawing_documents d ON d.session_id = s.id
-		 WHERE s.status = 'in_progress'
-		 ORDER BY COALESCE(d.updated_at, s.started_at) DESC
+		 WHERE s.status IN ('in_progress', 'completed')
+		 ORDER BY d.updated_at DESC
 		 LIMIT ?`,
 		limit,
 	)
@@ -96,7 +102,7 @@ func (r *SessionRepository) ListResumable(limit int) ([]model.ResumableSession, 
 	sessions := []model.ResumableSession{}
 	for rows.Next() {
 		var s model.ResumableSession
-		if err := rows.Scan(&s.ID, &s.ReferenceImageID, &s.ReferenceTitle, &s.ExerciseMode, &s.StartedAt, &s.LastSavedAt, &s.OperationCount); err != nil {
+		if err := rows.Scan(&s.ID, &s.ReferenceImageID, &s.ReferenceTitle, &s.ExerciseMode, &s.Status, &s.StartedAt, &s.LastSavedAt, &s.OperationCount); err != nil {
 			return nil, fmt.Errorf("scan resumable session: %w", err)
 		}
 		sessions = append(sessions, s)

@@ -9,6 +9,7 @@ const mockListResumableSessions = vi.fn();
 const mockDiscardSession = vi.fn();
 const mockImportDrawingFile = vi.fn();
 const mockDeleteDrawingDocument = vi.fn();
+const mockResumeDrawing = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js', () => ({
   StartSession: (...args: any[]) => mockStartSession(...args),
@@ -19,6 +20,7 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
   ImportDrawingFile: (...args: any[]) => mockImportDrawingFile(...args),
   DeleteDrawingDocument: (...args: any[]) => mockDeleteDrawingDocument(...args),
+  ResumeDrawing: (...args: any[]) => mockResumeDrawing(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
@@ -53,6 +55,7 @@ describe('HomePage', () => {
     mockListResumableSessions.mockResolvedValue([]);
     mockDiscardSession.mockResolvedValue(undefined);
     mockDeleteDrawingDocument.mockResolvedValue(undefined);
+    mockResumeDrawing.mockImplementation(async (id: string) => ({ id }));
   });
 
   it('renders the app title', () => {
@@ -169,20 +172,22 @@ describe('HomePage', () => {
     });
   });
 
-  it('offers unfinished sessions to pick back up', async () => {
-    mockListResumableSessions.mockResolvedValue([
-      {
-        id: 'session-042',
-        referenceImageId: 'ref-001',
-        referenceTitle: 'Simple Face',
-        exerciseMode: 'line_work',
-        startedAt: new Date().toISOString(),
-        lastSavedAt: new Date().toISOString(),
-        operationCount: 12,
-      },
-    ]);
-    const user = userEvent.setup();
-    render(
+  function savedDrawing(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'session-042',
+      referenceImageId: 'ref-001',
+      referenceTitle: 'Simple Face',
+      exerciseMode: 'line_work',
+      status: 'in_progress',
+      startedAt: new Date().toISOString(),
+      lastSavedAt: new Date().toISOString(),
+      operationCount: 12,
+      ...overrides,
+    };
+  }
+
+  function renderWithSessionRoute() {
+    return render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -190,30 +195,75 @@ describe('HomePage', () => {
         </Routes>
       </MemoryRouter>
     );
+  }
+
+  it('offers unfinished sessions to pick back up', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    const user = userEvent.setup();
+    renderWithSessionRoute();
 
     await waitFor(() => {
       expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
     });
     expect(screen.getByText(/12 changes/)).toBeInTheDocument();
+    expect(screen.getByTestId('resume-status-session-042')).toHaveTextContent('Unfinished');
+    expect(screen.getByTestId('resume-btn-session-042')).toHaveTextContent('Resume');
 
     await user.click(screen.getByTestId('resume-btn-session-042'));
+
+    expect(mockResumeDrawing).toHaveBeenCalledWith('session-042');
     await waitFor(() => {
       expect(screen.getByTestId('session-page')).toBeInTheDocument();
     });
   });
 
-  it('drops a session from the resume list when it is discarded', async () => {
-    mockListResumableSessions.mockResolvedValueOnce([
-      {
-        id: 'session-042',
-        referenceImageId: 'ref-001',
-        referenceTitle: 'Simple Face',
-        exerciseMode: 'line_work',
-        startedAt: new Date().toISOString(),
-        lastSavedAt: new Date().toISOString(),
-        operationCount: 1,
-      },
+  // Submitting used to make a drawing unreachable from here, which left no
+  // way back to a whole session's work.
+  it('lists a submitted drawing and carries on from it in a new session', async () => {
+    mockListResumableSessions.mockResolvedValue([
+      savedDrawing({ status: 'completed' }),
     ]);
+    mockResumeDrawing.mockResolvedValue({ id: 'session-099' });
+    const user = userEvent.setup();
+    renderWithSessionRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('resume-status-session-042')).toHaveTextContent('Submitted');
+    expect(screen.getByTestId('resume-btn-session-042')).toHaveTextContent('Keep drawing');
+    // A submitted drawing is graded; there is nothing left to discard.
+    expect(screen.queryByTestId('resume-discard-session-042')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('resume-btn-session-042'));
+
+    expect(mockResumeDrawing).toHaveBeenCalledWith('session-042');
+    await waitFor(() => {
+      expect(screen.getByTestId('session-page')).toBeInTheDocument();
+    });
+  });
+
+  it('says so when a saved drawing will not open', async () => {
+    mockListResumableSessions.mockResolvedValue([savedDrawing()]);
+    mockResumeDrawing.mockRejectedValue(new Error('load saved drawing: not found'));
+    const user = userEvent.setup();
+    renderWithSessionRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('resume-btn-session-042'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-sessions-error')).toHaveTextContent(
+        'load saved drawing: not found'
+      );
+    });
+    expect(screen.queryByTestId('session-page')).not.toBeInTheDocument();
+  });
+
+  it('drops a session from the resume list when it is discarded', async () => {
+    mockListResumableSessions.mockResolvedValueOnce([savedDrawing({ operationCount: 1 })]);
     mockListResumableSessions.mockResolvedValue([]);
     const user = userEvent.setup();
     render(

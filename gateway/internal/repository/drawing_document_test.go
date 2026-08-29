@@ -69,21 +69,47 @@ func TestDrawingDocumentRepository_Delete(t *testing.T) {
 func TestSessionRepository_ListResumable(t *testing.T) {
 	db := testDB(t)
 	repo := NewSessionRepository(db)
+	docs := NewDrawingDocumentRepository(db)
+	saved := time.Now().Truncate(time.Second)
+
 	seedSession(t, db, "sess-300")
 	seedSession(t, db, "sess-301")
+	seedSession(t, db, "sess-302")
+	seedSession(t, db, "sess-303")
+	for i, id := range []string{"sess-300", "sess-301", "sess-302"} {
+		require.NoError(t, docs.Upsert(model.DrawingDocument{
+			SessionID: id, FilePath: "path", Revision: 1, OperationCount: 4,
+			UpdatedAt: saved.Add(time.Duration(i) * time.Minute),
+		}))
+	}
 
-	// A finished session is not something to pick back up.
-	finished, err := repo.Get("sess-301")
-	require.NoError(t, err)
-	now := time.Now()
-	finished.Status = "completed"
-	finished.EndedAt = &now
-	require.NoError(t, repo.Update(finished))
+	// A submitted drawing stays listed: it is still one the artist may want
+	// to carry on with.
+	setStatus(t, repo, "sess-301", "completed")
+	// A discarded one does not — its drawing has been deleted with it.
+	setStatus(t, repo, "sess-302", "discarded")
+	require.NoError(t, docs.Delete("sess-302"))
 
 	resumable, err := repo.ListResumable(10)
 	require.NoError(t, err)
-	require.Len(t, resumable, 1)
-	assert.Equal(t, "sess-300", resumable[0].ID)
-	assert.Equal(t, "Simple Face - Lines", resumable[0].ReferenceTitle)
-	assert.Nil(t, resumable[0].LastSavedAt)
+
+	require.Len(t, resumable, 2, "sess-303 has nothing drawn on it and sess-302 was discarded")
+	// Most recently saved first.
+	assert.Equal(t, "sess-301", resumable[0].ID)
+	assert.Equal(t, "completed", resumable[0].Status)
+	assert.Equal(t, "sess-300", resumable[1].ID)
+	assert.Equal(t, "in_progress", resumable[1].Status)
+	assert.Equal(t, "Simple Face - Lines", resumable[1].ReferenceTitle)
+	assert.Equal(t, 4, resumable[1].OperationCount)
+	assert.False(t, resumable[1].LastSavedAt.IsZero())
+}
+
+func setStatus(t *testing.T, repo *SessionRepository, id string, status string) {
+	t.Helper()
+	session, err := repo.Get(id)
+	require.NoError(t, err)
+	now := time.Now()
+	session.Status = status
+	session.EndedAt = &now
+	require.NoError(t, repo.Update(session))
 }

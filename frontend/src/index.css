@@ -979,3 +979,27 @@ body {
   gap: 0.5rem;
   flex-shrink: 0;
 }
+
+.resume-status {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.resume-status-unfinished {
+  background: #0f3460;
+  color: #cfe0ff;
+}
+.resume-status-submitted {
+  background: #1f4d2e;
+  color: #cdf0d8;
+}
+.feedback-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}

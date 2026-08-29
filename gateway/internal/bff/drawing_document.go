@@ -151,9 +151,55 @@ func (s *DrawingService) ImportDrawingFile(srcPath string) (model.Session, error
 		return model.Session{}, err
 	}
 
-	mode := "line_work"
-	if file.Scene.Session != nil && file.Scene.Session.ExerciseMode != "" {
+	mode := ""
+	if file.Scene.Session != nil {
 		mode = file.Scene.Session.ExerciseMode
+	}
+	session, err := s.startSessionFromScene(file.Scene, referenceID, mode)
+	if err != nil {
+		slog.Error("failed to start a session from the drawing file", "method", "ImportDrawingFile", "path", srcPath, "error", err)
+		return model.Session{}, err
+	}
+	return session, nil
+}
+
+// ResumeDrawing hands back the session to open in order to carry on with a
+// saved drawing.
+//
+// An unfinished session is simply itself. A finished one cannot be reopened —
+// it has been graded, and its drawing and feedback are recorded against it —
+// so carrying on means a new session seeded with the same artwork. That keeps
+// the submitted attempt and its feedback intact while the next attempt earns
+// feedback of its own, which is how the progress history is meant to read.
+func (s *DrawingService) ResumeDrawing(sessionID string) (model.Session, error) {
+	session, err := s.sessionRepo.Get(sessionID)
+	if err != nil {
+		slog.Error("failed to get session", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		return model.Session{}, err
+	}
+	if session.Status == "in_progress" {
+		return session, nil
+	}
+
+	scene, err := s.store.Load(sessionID)
+	if err != nil {
+		slog.Error("failed to load the saved drawing", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		return model.Session{}, fmt.Errorf("load saved drawing: %w", err)
+	}
+
+	next, err := s.startSessionFromScene(scene, session.ReferenceImageID, session.ExerciseMode)
+	if err != nil {
+		slog.Error("failed to start a session from the saved drawing", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		return model.Session{}, err
+	}
+	return next, nil
+}
+
+// startSessionFromScene opens a fresh session already holding a drawing, used
+// both by importing a file and by carrying on from a finished session.
+func (s *DrawingService) startSessionFromScene(scene *drawdoc.Scene, referenceID string, mode string) (model.Session, error) {
+	if mode == "" {
+		mode = "line_work"
 	}
 	session := model.Session{
 		ID:               uuid.New().String(),
@@ -163,22 +209,22 @@ func (s *DrawingService) ImportDrawingFile(srcPath string) (model.Session, error
 		StartedAt:        time.Now(),
 	}
 	if err := s.sessionRepo.Create(session); err != nil {
-		return model.Session{}, fmt.Errorf("create session for imported drawing: %w", err)
+		return model.Session{}, fmt.Errorf("create session for the drawing: %w", err)
 	}
 
-	// The imported scene points at whichever reference the file was made
-	// from; re-point it at the one this machine now has.
-	if file.Scene.Reference == nil {
-		file.Scene.Reference = &drawdoc.ReferenceInfo{}
+	// The scene points at whichever reference it was drawn from; re-point it
+	// at the one this machine has, which an import may have just re-created.
+	if scene.Reference == nil {
+		scene.Reference = &drawdoc.ReferenceInfo{}
 	}
-	file.Scene.Reference.ID = referenceID
+	scene.Reference.ID = referenceID
 
-	state, err := s.store.Import(session.ID, file.Scene)
+	state, err := s.store.Import(session.ID, scene)
 	if err != nil {
-		return model.Session{}, fmt.Errorf("import drawing operations: %w", err)
+		return model.Session{}, fmt.Errorf("seed the drawing: %w", err)
 	}
 	if _, err := s.checkpoint(session.ID); err != nil {
-		slog.Error("failed to checkpoint imported drawing", "method", "ImportDrawingFile", "sessionID", session.ID, "error", err)
+		slog.Error("failed to checkpoint the seeded drawing", "sessionID", session.ID, "error", err)
 	}
 	s.recordDocument(session.ID, state)
 	return session, nil

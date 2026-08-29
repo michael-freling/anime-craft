@@ -170,7 +170,7 @@ internal/
 - `EndSession(sessionID string) -> Session` -- Marks session as completed, records end time.
 - `GetSession(sessionID string) -> Session` -- Retrieves a single session.
 - `ListSessions(limit int, offset int) -> []Session` -- Retrieves session history with pagination.
-- `ListResumableSessions(limit int) -> []ResumableSession` -- Unfinished sessions the home screen offers to pick back up, with what their autosave last wrote.
+- `ListResumableSessions(limit int) -> []ResumableSession` -- Saved drawings the home screen offers to pick back up, submitted ones included, with what their autosave last wrote.
 - `DiscardSession(sessionID string) -> error` -- Marks an unfinished session abandoned so it stops appearing as resumable.
 
 **DrawingService** -- Handles saving and retrieving user drawings, both the autosaved editable document and the flattened PNG a finished session is graded from.
@@ -182,6 +182,7 @@ internal/
 - `FlushDrawingDocument(sessionID string) -> DrawingSaveResult` -- Brings the OpenRaster checkpoint level with the journal.
 - `ExportDrawingFile(sessionID string, destPath string) -> string` -- Writes a portable `.ora` copy.
 - `ImportDrawingFile(srcPath string) -> Session` -- Opens a saved `.ora` as a new session, restoring the reference image inside it.
+- `ResumeDrawing(sessionID string) -> Session` -- The session to open to carry on with a saved drawing: an unfinished one as it stands, a submitted one continued in a new session holding the same artwork.
 - `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing, used alongside `DiscardSession` when the artist abandons a session.
 
 **FeedbackService** -- Orchestrates AI feedback.
