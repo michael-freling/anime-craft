@@ -144,17 +144,29 @@ shown rather than swallowed, and retried — the work is still in the editor.
 
 ### Carrying on from a finished drawing
 
-A submitted session has been graded: its flattened drawing and its feedback are
-recorded against it, one apiece. Reopening it would mean overwriting both, so
-carrying on instead opens a **new session already holding the same artwork** —
-the submitted attempt and its feedback stay as they are, and the next attempt
-earns feedback of its own, which is how the progress history is meant to read.
+A drawing belongs to an artwork, not to a session. A submitted session has been
+graded — its flattened drawing and its feedback are recorded against it, one
+apiece — so it cannot simply be reopened. Carrying on opens a **new session**,
+and the saved drawing **moves into it rather than being copied**.
 
-`ResumeDrawing` decides which of the two it is, so the button never has to: an
-unfinished session is simply itself, a finished one is continued in a fresh
-session. It is offered from the home screen (**Keep drawing**) and from the
-feedback page (**Keep drawing on this**), where the suggestions are still on
-screen.
+That is what keeps one artwork to one entry and one file. The operation log
+grows across every attempt made on the drawing and carries their whole history,
+with a `mark_submitted` operation — which draws nothing — recorded where each
+attempt ended. Every submitted session keeps its own score and feedback, so the
+progress history still reads as a series of attempts; what it no longer keeps
+is a second copy of the drawing.
+
+`ResumeDrawing` works out what to open, so no button has to:
+
+- an unfinished session is simply itself;
+- a finished one is continued in a new session that takes the drawing on;
+- one whose drawing has already moved is followed along the chain (recorded as
+  `sessions.continued_by_session_id`) to whichever session now holds it, so an
+  older feedback page opens the live drawing rather than failing or forking a
+  second copy.
+
+It is offered from the home screen (**Keep drawing**) and from the feedback page
+(**Keep drawing on this**), where the suggestions are still on screen.
 
 The drawing that comes across is the **baseline** of the new session, recorded
 as `baseIndex` in the scene: the first `baseIndex` operations were inherited

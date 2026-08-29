@@ -99,6 +99,26 @@ describe('materialize', () => {
     expect(doc.strokes.size).toBe(0);
   });
 
+  // A marker recording that the drawing was submitted is history, not
+  // artwork: it has to pass through the renderer without drawing anything.
+  it('draws nothing for a submission marker', () => {
+    const doc = materialize(
+      [
+        stroke('s1', 'layer-1', 0, 0, 1, 1),
+        {
+          type: 'mark_submitted',
+          sessionId: 'session-001',
+          submittedAt: '2026-01-02T03:04:05Z',
+        },
+        stroke('s2', 'layer-1', 2, 2, 3, 3),
+      ],
+      2
+    );
+
+    expect(ids(doc.layers)).toEqual(['layer-1']);
+    expect(doc.strokes.get('layer-1')).toHaveLength(2);
+  });
+
   // Undo should put the artist back where they were working, which the log
   // knows without recording every selection.
   it('derives which layer was being worked on', () => {

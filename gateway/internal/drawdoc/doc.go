@@ -26,6 +26,11 @@ const (
 	OpRemoveLayer     OpType = "remove_layer"
 	OpSetLayerVisible OpType = "set_layer_visible"
 	OpMoveLayer       OpType = "move_layer"
+	// OpMarkSubmitted draws nothing. It records in the log that the drawing
+	// was submitted at this point, so one file carries the whole history of
+	// an artwork across the attempts made on it and the boundaries between
+	// them stay visible.
+	OpMarkSubmitted OpType = "mark_submitted"
 )
 
 // Size is the document's coordinate space. Strokes are stored in these units,
@@ -69,6 +74,10 @@ type Operation struct {
 	LayerID string  `json:"layerId,omitempty"`
 	Visible *bool   `json:"visible,omitempty"`
 	ToIndex *int    `json:"toIndex,omitempty"`
+
+	// Set on mark_submitted: which session submitted the drawing, and when.
+	SessionID   string     `json:"sessionId,omitempty"`
+	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
 
 	// raw keeps the bytes an operation was decoded from so a log written by a
 	// newer app version survives a round trip through an older one instead of
@@ -241,6 +250,9 @@ func Materialize(ops []Operation, cursor int) Document {
 				continue
 			}
 			doc.Layers[index].Visible = *op.Visible
+
+		// OpMarkSubmitted and anything a newer version introduced draw
+		// nothing, and fall through to be skipped.
 
 		case OpMoveLayer:
 			index := doc.indexOf(op.LayerID)

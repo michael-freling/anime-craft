@@ -49,7 +49,13 @@ export type Operation =
   | { type: "add_layer"; layer: Layer }
   | { type: "remove_layer"; layerId: string }
   | { type: "set_layer_visible"; layerId: string; visible: boolean }
-  | { type: "move_layer"; layerId: string; toIndex: number };
+  | { type: "move_layer"; layerId: string; toIndex: number }
+  /**
+   * Draws nothing. Written by the Go side when a drawing is submitted and
+   * carried on with, so one file holds the whole history of an artwork across
+   * the attempts made on it, with the boundaries between them still visible.
+   */
+  | { type: "mark_submitted"; sessionId: string; submittedAt: string };
 
 export interface ToolState {
   tool: Tool;

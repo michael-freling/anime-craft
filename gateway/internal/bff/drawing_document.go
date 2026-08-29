@@ -167,33 +167,90 @@ func (s *DrawingService) ImportDrawingFile(srcPath string) (model.Session, error
 // ResumeDrawing hands back the session to open in order to carry on with a
 // saved drawing.
 //
-// An unfinished session is simply itself. A finished one cannot be reopened —
-// it has been graded, and its drawing and feedback are recorded against it —
-// so carrying on means a new session seeded with the same artwork. That keeps
-// the submitted attempt and its feedback intact while the next attempt earns
-// feedback of its own, which is how the progress history is meant to read.
+// A drawing belongs to one artwork, not to one session. An unfinished session
+// is simply itself. A finished one cannot be reopened — it has been graded,
+// and its drawing and feedback are recorded against it — so carrying on opens
+// a new session, and the saved drawing *moves* into it rather than being
+// copied. One artwork therefore stays one entry and one file: the operation
+// log grows across attempts and carries their whole history, with a marker
+// where each was submitted, while every submitted attempt keeps its own score
+// and feedback.
+//
+// Asking to carry on from an attempt whose drawing has already moved follows
+// the chain to whichever session now holds it, so an older feedback page still
+// opens the live drawing rather than failing or forking it.
 func (s *DrawingService) ResumeDrawing(sessionID string) (model.Session, error) {
-	session, err := s.sessionRepo.Get(sessionID)
+	session, err := s.currentHolder(sessionID)
 	if err != nil {
-		slog.Error("failed to get session", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		slog.Error("failed to find the session holding the drawing", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
 		return model.Session{}, err
 	}
 	if session.Status == "in_progress" {
 		return session, nil
 	}
 
-	scene, err := s.store.Load(sessionID)
+	scene, err := s.store.Load(session.ID)
 	if err != nil {
-		slog.Error("failed to load the saved drawing", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		slog.Error("failed to load the saved drawing", "method", "ResumeDrawing", "sessionID", session.ID, "error", err)
 		return model.Session{}, fmt.Errorf("load saved drawing: %w", err)
 	}
 
+	// Mark where this attempt ended before the log grows past it, so the
+	// history in the file keeps the boundaries between attempts.
+	submittedAt := time.Now()
+	scene.Operations = append(scene.Operations[:scene.Cursor+1:scene.Cursor+1], drawdoc.Operation{
+		Type:        drawdoc.OpMarkSubmitted,
+		SessionID:   session.ID,
+		SubmittedAt: &submittedAt,
+	})
+	scene.Cursor = len(scene.Operations) - 1
+
 	next, err := s.startSessionFromScene(scene, session.ReferenceImageID, session.ExerciseMode)
 	if err != nil {
-		slog.Error("failed to start a session from the saved drawing", "method", "ResumeDrawing", "sessionID", sessionID, "error", err)
+		slog.Error("failed to start a session from the saved drawing", "method", "ResumeDrawing", "sessionID", session.ID, "error", err)
 		return model.Session{}, err
 	}
+
+	// The drawing has moved, so the attempt it came from no longer holds one.
+	// Done only once the new session is safely on disk, and only to the index
+	// and the files — the session, its score and its feedback all stay.
+	if err := s.handOverDrawing(session.ID, next.ID); err != nil {
+		slog.Error("failed to hand the drawing over", "method", "ResumeDrawing", "sessionID", session.ID, "nextSessionID", next.ID, "error", err)
+	}
 	return next, nil
+}
+
+// currentHolder follows the continuation chain to the session that now holds
+// the drawing. The visited set means a chain that somehow loops fails loudly
+// rather than spinning.
+func (s *DrawingService) currentHolder(sessionID string) (model.Session, error) {
+	visited := map[string]bool{}
+	for {
+		session, err := s.sessionRepo.Get(sessionID)
+		if err != nil {
+			return model.Session{}, err
+		}
+		if visited[sessionID] {
+			return model.Session{}, fmt.Errorf("session continuation loops at %s", sessionID)
+		}
+		visited[sessionID] = true
+
+		next, err := s.sessionRepo.ContinuedBy(sessionID)
+		if err != nil {
+			return model.Session{}, err
+		}
+		if next == "" {
+			return session, nil
+		}
+		sessionID = next
+	}
+}
+
+func (s *DrawingService) handOverDrawing(fromSessionID string, toSessionID string) error {
+	if err := s.sessionRepo.SetContinuedBy(fromSessionID, toSessionID); err != nil {
+		return err
+	}
+	return s.DeleteDrawingDocument(fromSessionID)
 }
 
 // startSessionFromScene opens a fresh session already holding a drawing, used

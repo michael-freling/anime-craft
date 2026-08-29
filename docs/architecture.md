@@ -182,7 +182,7 @@ internal/
 - `FlushDrawingDocument(sessionID string) -> DrawingSaveResult` -- Brings the OpenRaster checkpoint level with the journal.
 - `ExportDrawingFile(sessionID string, destPath string) -> string` -- Writes a portable `.ora` copy.
 - `ImportDrawingFile(srcPath string) -> Session` -- Opens a saved `.ora` as a new session, restoring the reference image inside it.
-- `ResumeDrawing(sessionID string) -> Session` -- The session to open to carry on with a saved drawing: an unfinished one as it stands, a submitted one continued in a new session holding the same artwork, which becomes that session's non-undoable baseline.
+- `ResumeDrawing(sessionID string) -> Session` -- The session to open to carry on with a saved drawing: an unfinished one as it stands, a submitted one continued in a new session the drawing *moves* into (so one artwork stays one entry and one file), and one whose drawing has already moved followed along the chain to whichever session holds it now.
 - `GetDrawingThumbnail(sessionID string) -> string` -- A preview of a saved drawing as a data URI, taken from the thumbnail inside its OpenRaster checkpoint. Empty when there is no preview yet.
 - `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing, used alongside `DiscardSession` when the artist abandons a session.
 
@@ -296,6 +296,7 @@ and a saved file opens in Krita or MyPaint. See
 | reference_image_id | TEXT | FK -> reference_images.id, NOT NULL | The reference used |
 | exercise_mode | TEXT | NOT NULL | "line_work", "coloring", "full_drawing" |
 | status | TEXT | NOT NULL | "in_progress", "completed", "discarded" |
+| continued_by_session_id | TEXT | FK -> sessions.id | The session that took this one's drawing on, when it was carried on with |
 | started_at | DATETIME | NOT NULL | When the session began |
 | ended_at | DATETIME | | When the session ended |
 | duration_seconds | INTEGER | | Total drawing time in seconds |

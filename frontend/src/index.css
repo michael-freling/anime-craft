@@ -951,10 +951,15 @@ body {
   padding: 0;
   margin: 0;
 }
+/* A grid rather than a flex row with space-between: that distributed the
+   free space on both sides of the text, so the details drifted to a different
+   position on every row depending on how long the title happened to be. Fixed
+   columns keep the preview, the text, the status and the buttons in line down
+   the whole list. */
 .resume-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 6.5rem auto;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
   border: 1px solid #0f3460;
@@ -964,28 +969,43 @@ body {
 .resume-details {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.2rem;
   min-width: 0;
+  text-align: left;
 }
 .resume-title {
   font-weight: 600;
+  /* Titles vary wildly in length; a long one truncates instead of pushing
+     everything after it out of line. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .resume-meta {
   font-size: 0.8rem;
   color: #8fa3c8;
+  white-space: nowrap;
 }
 .resume-actions {
   display: flex;
   gap: 0.5rem;
-  flex-shrink: 0;
+  justify-content: flex-end;
+}
+/* Equal widths so the buttons line up down the list even though one row says
+   "Resume" and the next says "Keep drawing". */
+.resume-actions .session-btn {
+  min-width: 6.5rem;
 }
 
 .resume-status {
   display: inline-block;
-  margin-right: 0.4rem;
-  padding: 0.05rem 0.4rem;
+  width: 100%;
+  padding: 0.1rem 0.4rem;
   border-radius: 999px;
   font-size: 0.7rem;
+  text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -1025,4 +1045,10 @@ body {
 .resume-confirm {
   font-size: 0.8rem;
   color: #8fa3c8;
+  white-space: nowrap;
+}
+/* The confirmation needs more room than the two buttons it replaces, so it
+   drops the equal-width rule rather than forcing the row wider. */
+.resume-actions-confirm .session-btn {
+  min-width: 0;
 }

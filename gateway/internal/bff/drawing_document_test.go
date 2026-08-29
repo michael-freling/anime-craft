@@ -370,6 +370,96 @@ func TestDrawingService_ResumeDrawing_UnfinishedSessionIsItself(t *testing.T) {
 	assert.Equal(t, f.sessionID, resumed.ID, "an unfinished session is picked up where it was left")
 }
 
+// One artwork stays one entry: the drawing moves into the new attempt rather
+// than being copied, so carrying on does not leave a second row on the home
+// screen for what the artist thinks of as one drawing.
+func TestDrawingService_ResumeDrawing_MovesTheDrawingRatherThanCopyingIt(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	next, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1, "one artwork, one entry")
+	assert.Equal(t, next.ID, resumable[0].ID)
+
+	// The drawing is gone from the attempt it came from, files and all.
+	scene, err := f.svc.LoadDrawingDocument(f.sessionID)
+	require.NoError(t, err)
+	assert.Empty(t, scene)
+	_, err = os.Stat(filepath.Join(f.dataDir, "drawings", f.sessionID))
+	assert.True(t, os.IsNotExist(err))
+
+	// What the session records about having practised is untouched.
+	source, err := f.sessionSvc.GetSession(f.sessionID)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", source.Status)
+	assert.NotNil(t, source.EndedAt)
+}
+
+// The log keeps the whole history of an artwork, with the boundary between
+// attempts marked, so a single file shows how the drawing changed over time.
+func TestDrawingService_ResumeDrawing_RecordsWhereEachAttemptEnded(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+
+	second, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+	_, err = f.svc.SaveDrawingOperations(second.ID, saveRequest(2, 2, strokeOp("s2", 5, 5, 300, 300)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(second.ID)
+	require.NoError(t, err)
+
+	third, err := f.svc.ResumeDrawing(second.ID)
+	require.NoError(t, err)
+
+	scene := loadScene(t, f.svc, third.ID)
+	var marks []string
+	for _, op := range scene.Operations {
+		if op.Type == drawdoc.OpMarkSubmitted {
+			marks = append(marks, op.SessionID)
+			assert.NotNil(t, op.SubmittedAt)
+		}
+	}
+	assert.Equal(t, []string{f.sessionID, second.ID}, marks, "both attempts left a marker behind")
+	// Every stroke ever made on the artwork is still in the one file.
+	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2)
+
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, resumable, 1, "three attempts, still one drawing")
+	assert.Equal(t, third.ID, resumable[0].ID)
+}
+
+// An older feedback page still opens the live drawing rather than failing or
+// forking a second copy of it.
+func TestDrawingService_ResumeDrawing_FollowsTheChainToTheLiveDrawing(t *testing.T) {
+	f := newDrawingFixture(t)
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+	second, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+
+	// Asking the original again lands on the session now holding the drawing.
+	again, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+	assert.Equal(t, second.ID, again.ID)
+
+	resumable, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	assert.Len(t, resumable, 1)
+}
+
 // A submitted session has been graded, so carrying on means a new attempt
 // holding the same artwork — leaving the graded one and its feedback alone.
 func TestDrawingService_ResumeDrawing_ContinuesFromASubmittedDrawing(t *testing.T) {
@@ -395,19 +485,20 @@ func TestDrawingService_ResumeDrawing_ContinuesFromASubmittedDrawing(t *testing.
 	require.NoError(t, err)
 	var scene drawdoc.Scene
 	require.NoError(t, json.Unmarshal([]byte(sceneJSON), &scene))
-	assert.Len(t, scene.Operations, 2)
-	assert.Equal(t, 1, scene.Cursor)
+	assert.Len(t, scene.Operations, 3, "two strokes plus the marker for the submitted attempt")
+	assert.Equal(t, 2, scene.Cursor)
 
-	// The submitted session is untouched and still listed.
+	// The submitted session keeps its status; the drawing has moved on.
 	source, err := f.sessionSvc.GetSession(f.sessionID)
 	require.NoError(t, err)
 	assert.Equal(t, "completed", source.Status)
 	resumable, err := f.sessionSvc.ListResumableSessions(10)
 	require.NoError(t, err)
-	assert.Len(t, resumable, 2)
+	require.Len(t, resumable, 1)
+	assert.Equal(t, next.ID, resumable[0].ID)
 
 	// And it carries on autosaving on its own from there.
-	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(2, 2, strokeOp("s3", 5, 5, 6, 6)))
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(3, 3, strokeOp("s3", 5, 5, 6, 6)))
 	require.NoError(t, err)
 }
 
@@ -445,8 +536,8 @@ func TestDrawingService_ResumeDrawing_InheritedWorkIsNotUndoable(t *testing.T) {
 	require.NoError(t, err)
 
 	scene := loadScene(t, f.svc, next.ID)
-	assert.Equal(t, 2, scene.BaseIndex, "both inherited strokes are the starting point")
-	assert.Equal(t, 1, scene.Cursor, "the drawing is fully on the canvas")
+	assert.Equal(t, 3, scene.BaseIndex, "the strokes and the submission marker are the starting point")
+	assert.Equal(t, 2, scene.Cursor, "the drawing is fully on the canvas")
 	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2)
 
 	// The store refuses a save that would rewrite the inherited drawing, so a
@@ -457,13 +548,13 @@ func TestDrawingService_ResumeDrawing_InheritedWorkIsNotUndoable(t *testing.T) {
 
 	// Drawing on top works, and undoing that comes back to the inherited
 	// drawing rather than eating into it.
-	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(2, 2, strokeOp("s3", 5, 5, 6, 6)))
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(3, 3, strokeOp("s3", 5, 5, 6, 6)))
 	require.NoError(t, err)
-	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(3, 1))
+	_, err = f.svc.SaveDrawingOperations(next.ID, saveRequest(4, 2))
 	require.NoError(t, err)
 
 	scene = loadScene(t, f.svc, next.ID)
-	assert.Equal(t, 1, scene.Cursor)
+	assert.Equal(t, 2, scene.Cursor)
 	assert.Len(t, scene.Materialize().Strokes["layer-1"], 2)
 }
 
@@ -483,9 +574,11 @@ func TestDrawingService_ResumeDrawing_DropsTheOldRedoStack(t *testing.T) {
 	require.NoError(t, err)
 
 	scene := loadScene(t, f.svc, next.ID)
-	assert.Len(t, scene.Operations, 1, "only what was actually on the canvas comes across")
-	assert.Equal(t, 1, scene.BaseIndex)
-	assert.Equal(t, 0, scene.Cursor)
+	assert.Len(t, scene.Operations, 2, "what was on the canvas, plus the submission marker")
+	assert.Equal(t, drawdoc.OpAddStroke, scene.Operations[0].Type)
+	assert.Equal(t, drawdoc.OpMarkSubmitted, scene.Operations[1].Type)
+	assert.Equal(t, 2, scene.BaseIndex)
+	assert.Equal(t, 1, scene.Cursor)
 }
 
 // The baseline has to survive a checkpoint, or reopening the saved file would
@@ -505,8 +598,8 @@ func TestDrawingService_SeededBaselineSurvivesACheckpoint(t *testing.T) {
 
 	reopened, err := drawdoc.ReadORA(exported)
 	require.NoError(t, err)
-	assert.Equal(t, 1, reopened.BaseIndex)
-	assert.Equal(t, 0, reopened.Cursor)
+	assert.Equal(t, 2, reopened.BaseIndex)
+	assert.Equal(t, 1, reopened.Cursor)
 }
 
 func TestDrawingService_GetDrawingThumbnail(t *testing.T) {

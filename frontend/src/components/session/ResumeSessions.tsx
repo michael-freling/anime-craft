@@ -173,23 +173,29 @@ function ResumeSessions({ onOpen }: ResumeSessionsProps) {
               </div>
 
               <div className="resume-details">
-                <span className="resume-title">
+                <span
+                  className="resume-title"
+                  title={session.referenceTitle || "Untitled reference"}
+                >
                   {session.referenceTitle || "Untitled reference"}
                 </span>
                 <span className="resume-meta">
-                  <span
-                    className={`resume-status resume-status-${submitted ? "submitted" : "unfinished"}`}
-                    data-testid={`resume-status-${session.id}`}
-                  >
-                    {submitted ? "Submitted" : "Unfinished"}
-                  </span>
                   {session.operationCount} change
                   {session.operationCount === 1 ? "" : "s"} · saved{" "}
                   {formatWhen(session.lastSavedAt)}
                 </span>
               </div>
 
-              <div className="resume-actions">
+              <span
+                className={`resume-status resume-status-${submitted ? "submitted" : "unfinished"}`}
+                data-testid={`resume-status-${session.id}`}
+              >
+                {submitted ? "Submitted" : "Unfinished"}
+              </span>
+
+              <div
+                className={`resume-actions ${confirming ? "resume-actions-confirm" : ""}`}
+              >
                 {confirming ? (
                   <>
                     <span className="resume-confirm">Delete this drawing?</span>

@@ -109,3 +109,32 @@ func (r *SessionRepository) ListResumable(limit int) ([]model.ResumableSession, 
 	}
 	return sessions, rows.Err()
 }
+
+// SetContinuedBy records that a session's drawing was taken on by another
+// session, so the chain can be followed to whichever one now holds it.
+func (r *SessionRepository) SetContinuedBy(sessionID string, nextSessionID string) error {
+	_, err := r.db.Exec(
+		"UPDATE sessions SET continued_by_session_id = ? WHERE id = ?",
+		nextSessionID, sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("record session continuation: %w", err)
+	}
+	return nil
+}
+
+// ContinuedBy returns the session that took this one's drawing on, or an
+// empty string when it still holds its own.
+func (r *SessionRepository) ContinuedBy(sessionID string) (string, error) {
+	var next sql.NullString
+	err := r.db.QueryRow(
+		"SELECT continued_by_session_id FROM sessions WHERE id = ?", sessionID,
+	).Scan(&next)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("get session continuation: %w", err)
+	}
+	return next.String, nil
+}
