@@ -1,0 +1,53 @@
+# Releasing
+
+A release is a one-line change: edit `VERSION` on `main`.
+
+```
+0.1.0
+```
+
+The tag is that line with a `v` in front — `0.1.0` becomes `v0.1.0`. Nothing else
+carries the version, so there is no second place to forget.
+
+## What happens
+
+`.github/workflows/release.yml` runs when `VERSION` changes on `main`:
+
+1. **Read the version.** It must look like `1.2.3`, optionally with a pre-release
+   suffix (`1.2.3-rc.1`); anything else stops the run rather than creating a tag
+   nobody meant. If the tag already exists the run stops here, so touching the
+   file without changing it is harmless.
+2. **Build**, once per platform, on `ubuntu-latest`:
+   - `anime-craft-<version>-linux-amd64.tar.gz` — a tar so the executable bit
+     survives the download.
+   - `anime-craft-<version>-windows-amd64.zip` — cross-compiled, which works
+     because the Windows build is pure Go (`CGO_ENABLED=0`). Both platforms
+     still need GTK on the runner all the same: `go install wails3` does not
+     compile without it, and generating the bindings then parses Go packages
+     that import the toolkit.
+3. **Tag and release.** The tag is created on the commit that changed `VERSION`,
+   and both archives are attached to a GitHub release with generated notes.
+
+## Choosing the number
+
+Ordinary [semantic versioning](https://semver.org): patch for fixes, minor for
+features, major once there is something to break. The app is pre-1.0, so `0.x.y`
+minor bumps are where features go.
+
+## When something goes wrong
+
+- **The build failed on something unrelated.** Re-run the workflow by hand
+  (`workflow_dispatch`); it will pick the version out of `VERSION` again and, as
+  long as no tag was created, release it.
+- **A release went out wrong.** Delete the release *and* its tag on GitHub, then
+  bump `VERSION` to the next patch and let it run again. Re-using a version that
+  someone may already have downloaded is worse than spending a number.
+
+## What is not in the release
+
+The Python inference service in `inference/`. The desktop app connects to it over
+gRPC at a default local address and degrades gracefully when it is not there:
+drawing, layers, saving and resuming work from the downloaded binary alone, while
+line-art extraction and drawing feedback need the service running. Packaging the
+two together would mean shipping a Python runtime and model weights, which is a
+separate decision from shipping the app.

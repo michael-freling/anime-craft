@@ -1,0 +1,163 @@
+name: Release
+
+# Releasing is bumping VERSION on main. Everything below follows from that:
+# the tag, the release, and a build for each platform attached to it. Nothing
+# has to be tagged by hand, and the version that shipped is in the history
+# rather than in someone's shell.
+on:
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+  # For re-running a release whose build failed on something unrelated.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Read the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      release: ${{ steps.read.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags, so an already-released version can be told from a new one.
+          fetch-depth: 0
+
+      - name: Read VERSION
+        id: read
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "VERSION should hold a version like 1.2.3, not '$version'." >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # Touching VERSION without changing it — a rebase, a typo fix in a
+          # comment — should not try to release the same version twice.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag is already released; there is nothing to do."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Releasing $tag."
+          fi
+
+  build:
+    name: Build for ${{ matrix.os }}
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # One platform failing should not hide whether the other one works.
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            binary: anime-craft
+          - os: windows
+            binary: anime-craft.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Go version from go.mod
+        id: go-version
+        run: echo "version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Needed for both platforms, not just Linux. `go install wails3` does not
+      # even compile without them, and generating the bindings then parses Go
+      # packages that import the toolkit. The Windows binary itself is pure Go
+      # (CGO_ENABLED=0), so it cross-compiles from this runner.
+      - name: Install Wails system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          # Task is fetched from GitHub, and anonymous requests get rate limited.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.11
+
+      - name: Build
+        run: task ${{ matrix.os }}:build PRODUCTION=true
+
+      - name: Pack it up
+        run: |
+          name="anime-craft-${{ needs.prepare.outputs.version }}-${{ matrix.os }}-amd64"
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            (cd bin && zip -q "../dist/$name.zip" "${{ matrix.binary }}")
+          else
+            # tar, so the executable bit survives the download.
+            tar -czf "dist/$name.tar.gz" -C bin "${{ matrix.binary }}"
+          fi
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anime-craft-${{ matrix.os }}-amd64
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Tag and release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      # To create the tag and the release.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anime-craft-*
+          path: dist
+          merge-multiple: true
+
+      - run: ls -l dist
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          # The commit that changed VERSION is the one being released.
+          commit: ${{ github.sha }}
+          artifacts: dist/*
+          generateReleaseNotes: true
+          body: |
+            ## Downloads
+
+            | Platform | File |
+            | --- | --- |
+            | Linux (x86-64) | `anime-craft-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz` |
+            | Windows (x86-64) | `anime-craft-${{ needs.prepare.outputs.version }}-windows-amd64.zip` |
+
+            Drawing, layers, saving and resuming all work from the download alone.
+            The **analysis** — line-art extraction and feedback on a submitted
+            drawing — talks to the Python inference service in `inference/`, which
+            runs separately; without it the app still starts and says so.
+
+            The Linux build is made on Ubuntu 24.04 against `webkit2gtk-4.1`, so an
+            older distribution may need that library. Windows needs the WebView2
+            runtime, which ships with Windows 11 and recent Windows 10.
