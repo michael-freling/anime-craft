@@ -90,6 +90,8 @@ App
            |    +-- StartSessionButton
            |
            +-- SessionPage
+           |    +-- ReferencePanel (reference beside the drawing, in its own
+           |    |                   window, or away)
            |    +-- ReferenceImageViewer
            |    +-- DrawingCanvas
            |    |    +-- ToolBar (brush, eraser, color picker, undo/redo)
@@ -185,6 +187,16 @@ internal/
 - `ResumeDrawing(sessionID string) -> Session` -- The session to open to carry on with a saved drawing: an unfinished one as it stands, a submitted one continued in a new session the drawing *moves* into (so one artwork stays one entry and one file), and one whose drawing has already moved followed along the chain to whichever session holds it now.
 - `GetDrawingThumbnail(sessionID string) -> string` -- A preview of a saved drawing as a data URI, taken from the thumbnail inside its OpenRaster checkpoint. Empty when there is no preview yet.
 - `DeleteDrawingDocument(sessionID string) -> error` -- Throws away a session's saved drawing, used alongside `DiscardSession` when the artist abandons a session.
+
+**ReferenceWindowService** -- Puts the reference image in a window of its own, so the drawing can have the whole of the main one.
+
+- `OpenReferenceWindow(referenceID string) -> error` -- Opens the window, or raises it if already open. Titled after the reference, since it may end up on another screen with nothing else to say what it is.
+- `CloseReferenceWindow() -> error` -- Puts the reference back. Closing one that is not open is not an error.
+- `IsReferenceWindowOpen() -> bool` -- So a session opened while the window is up lays itself out for that.
+
+Creating a window means talking to the windowing toolkit, so the service takes a `ReferenceWindows` interface and the implementation lives beside `main`. Everything under `internal/` stays free of the toolkit, which is what lets it be built and tested on a machine with no display -- the Go test job in CI does not install GTK.
+
+The window loads the same frontend with a query string (`/?window=reference&referenceId=...`) rather than a path, because the asset server serves files and answers anything it does not recognise with a 404; a client-side route would never reach the app. Closing that window from its own title bar is the one state change the editor cannot see for itself, so the app emits `reference-window:closed` and the editor puts the reference back.
 
 **FeedbackService** -- Orchestrates AI feedback.
 

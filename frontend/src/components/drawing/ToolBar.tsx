@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { DrawingState, Tool } from "../../hooks/useDrawingCanvas";
 
 interface ToolBarProps {
@@ -7,6 +8,9 @@ interface ToolBarProps {
   onSetBrushColor: (color: string) => void;
   onUndo: () => void;
   onRedo: () => void;
+  /** Anything that belongs on this row but is not a drawing tool, pushed to
+   * the far end — it costs no space of its own, which is the point. */
+  trailing?: ReactNode;
 }
 
 const BRUSH_SIZES = [
@@ -38,6 +42,7 @@ function ToolBar({
   onSetBrushColor,
   onUndo,
   onRedo,
+  trailing,
 }: ToolBarProps) {
   return (
     <div className="toolbar" data-testid="toolbar">
@@ -110,6 +115,8 @@ function ToolBar({
           <kbd className="toolbar-key">{REDO_KEY}</kbd>
         </button>
       </div>
+
+      {trailing && <div className="toolbar-trailing">{trailing}</div>}
     </div>
   );
 }

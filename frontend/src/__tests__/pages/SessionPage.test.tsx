@@ -28,6 +28,27 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 
 const mockGetReferenceImageData = vi.fn();
 
+const mockOpenReferenceWindow = vi.fn();
+const mockCloseReferenceWindow = vi.fn();
+const mockIsReferenceWindowOpen = vi.fn();
+
+vi.mock(
+  '../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referencewindowservice.js',
+  () => ({
+    OpenReferenceWindow: (...args: any[]) => mockOpenReferenceWindow(...args),
+    CloseReferenceWindow: (...args: any[]) => mockCloseReferenceWindow(...args),
+    IsReferenceWindowOpen: (...args: any[]) => mockIsReferenceWindowOpen(...args),
+  })
+);
+
+// The session listens for the reference window closing, so it loads the Wails
+// runtime on mount. The real package does not resolve under vitest, and these
+// tests are not about it.
+vi.mock('@wailsio/runtime', () => ({
+  Events: { On: () => () => undefined },
+  Dialogs: { OpenFile: vi.fn(), SaveFile: vi.fn() },
+}));
+
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js', () => ({
   GetReference: (...args: any[]) => mockGetReference(...args),
   GetReferenceImageData: (...args: any[]) => mockGetReferenceImageData(...args),
@@ -77,6 +98,9 @@ describe('SessionPage', () => {
     mockDiscardSession.mockResolvedValue(undefined);
     mockDeleteDrawingDocument.mockResolvedValue(undefined);
     mockFlushDrawingDocument.mockResolvedValue({ revision: 1 });
+    mockOpenReferenceWindow.mockResolvedValue(undefined);
+    mockCloseReferenceWindow.mockResolvedValue(undefined);
+    mockIsReferenceWindowOpen.mockResolvedValue(false);
   });
 
   it('renders loading state initially', () => {
@@ -377,5 +401,55 @@ describe('SessionPage', () => {
     await waitFor(() => {
       expect(mockFlushDrawingDocument).toHaveBeenCalledWith('session-001');
     });
+  });
+
+  // The reference can go to a window of its own or be put away entirely, both
+  // to give the drawing more room.
+  it('offers to move the reference out of the way', async () => {
+    renderSessionPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-panel')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('reference-open-window')).toBeInTheDocument();
+    expect(screen.getByTestId('reference-hide')).toBeInTheDocument();
+  });
+
+  it('gives the drawing the whole window once the reference is elsewhere', async () => {
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-open-window')).not.toBeDisabled();
+    });
+    await user.click(screen.getByTestId('reference-open-window'));
+
+    await waitFor(() => {
+      expect(mockOpenReferenceWindow).toHaveBeenCalledWith('ref-001');
+    });
+    // The panel is gone, and what is left is a way back.
+    expect(screen.queryByTestId('reference-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('reference-show-here')).toBeInTheDocument();
+    expect(screen.getByTestId('drawing-canvas')).toBeInTheDocument();
+  });
+
+  it('says so when the reference will not move, and keeps it where it is', async () => {
+    mockOpenReferenceWindow.mockRejectedValue(
+      new Error('this build cannot open a second window')
+    );
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-open-window')).not.toBeDisabled();
+    });
+    await user.click(screen.getByTestId('reference-open-window'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reference-placement-error')).toHaveTextContent(
+        'this build cannot open a second window'
+      );
+    });
+    expect(screen.getByTestId('reference-panel')).toBeInTheDocument();
   });
 });

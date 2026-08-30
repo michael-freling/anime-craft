@@ -8,6 +8,20 @@ class MockResizeObserver {
 }
 global.ResizeObserver = MockResizeObserver as any;
 
+// jsdom has no PointerEvent, and Testing Library falls back to a plain Event
+// when it is missing — which arrives carrying no coordinates, so anything the
+// app does with pointers reads NaN. Panning the reference is one such thing.
+if (typeof window.PointerEvent === 'undefined') {
+  class MockPointerEvent extends MouseEvent {
+    pointerId: number;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+    }
+  }
+  window.PointerEvent = MockPointerEvent as any;
+}
+
 HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
   fillRect: vi.fn(),
   clearRect: vi.fn(),
