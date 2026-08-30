@@ -64,7 +64,7 @@ UNLIMITED_MESSAGE_BYTES = -1
 # model's processor scales anything over MAX_PIXELS down. Reconfiguring or
 # replacing either one moves this number with it, which is the point of
 # reporting it instead of letting callers hold their own copy.
-MAX_IMAGE_EDGE = max(LINEART_INPUT_SIZE, int(math.isqrt(FEEDBACK_MAX_PIXELS)))
+MAX_IMAGE_EDGE = max(LINEART_INPUT_SIZE, math.isqrt(FEEDBACK_MAX_PIXELS))
 
 logger = logging.getLogger(__name__)
 
