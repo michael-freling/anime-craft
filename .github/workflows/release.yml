@@ -1,0 +1,226 @@
+name: Release
+
+# Releasing is bumping VERSION on main. Everything below follows from that:
+# the tag, the release, and a build for each platform attached to it. Nothing
+# has to be tagged by hand, and the version that shipped is in the history
+# rather than in someone's shell.
+on:
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+  # A change to the release machinery gets its build run before it is merged,
+  # rather than finding out on the release itself. Nothing is tagged or
+  # published from a pull request.
+  pull_request:
+    paths:
+      - VERSION
+      - .github/workflows/release.yml
+  # For re-running a release whose build failed on something unrelated.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Read the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      build: ${{ steps.read.outputs.build }}
+      publish: ${{ steps.read.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags, so an already-released version can be told from a new one.
+          fetch-depth: 0
+
+      - name: Read VERSION
+        id: read
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "VERSION should hold a version like 1.2.3, not '$version'." >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Build it to prove the build works; releasing is for main.
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dry run for $tag: building, not releasing."
+          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # Touching VERSION without changing it — a rebase, a typo fix in a
+            # comment — should not try to release the same version twice.
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag is already released; there is nothing to do."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Releasing $tag."
+          fi
+
+  build:
+    name: Build for ${{ matrix.os }}
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # One platform failing should not hide whether the other one works.
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            binary: anime-craft
+          - os: windows
+            binary: anime-craft.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Go version from go.mod
+        id: go-version
+        run: echo "version=$(grep '^go ' go.mod | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Needed for both platforms, not just Linux. `go install wails3` does not
+      # even compile without them, and generating the bindings then parses Go
+      # packages that import the toolkit. The Windows binary itself is pure Go
+      # (CGO_ENABLED=0), so it cross-compiles from this runner.
+      - name: Install Wails system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          # Task is fetched from GitHub, and anonymous requests get rate limited.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.11
+
+      - name: Build
+        run: task ${{ matrix.os }}:build PRODUCTION=true
+
+      - name: Pack it up
+        run: |
+          name="anime-craft-${{ needs.prepare.outputs.version }}-${{ matrix.os }}-amd64"
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            (cd bin && zip -q "../dist/$name.zip" "${{ matrix.binary }}")
+          else
+            # tar, so the executable bit survives the download.
+            tar -czf "dist/$name.tar.gz" -C bin "${{ matrix.binary }}"
+          fi
+
+          # What the archive holds, in the log: an empty or mis-packed one
+          # otherwise looks exactly like a good one from the outside.
+          ls -l dist
+          file "bin/${{ matrix.binary }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            unzip -l "dist/$name.zip"
+          else
+            tar -tzvf "dist/$name.tar.gz"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anime-craft-${{ matrix.os }}-amd64
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Tag and release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      # To create the tag and the release, and to write the changelog back.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anime-craft-*
+          path: dist
+          merge-multiple: true
+
+      - run: ls -l dist
+
+      # The list of merged pull requests is asked for once and used twice — as
+      # the release body and as the changelog entry. Generating it in two
+      # places would eventually mean two lists that disagree.
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body > notes.md
+          cat notes.md
+
+          {
+            echo "## Downloads"
+            echo
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| Linux (x86-64) | \`anime-craft-$VERSION-linux-amd64.tar.gz\` |"
+            echo "| Windows (x86-64) | \`anime-craft-$VERSION-windows-amd64.zip\` |"
+            echo
+            echo "Drawing, layers, saving and resuming all work from the download alone."
+            echo "The **analysis** — line-art extraction and feedback on a submitted"
+            echo "drawing — talks to the Python inference service in \`inference/\`, which"
+            echo "runs separately; without it the app still starts and says so."
+            echo
+            echo "The Linux build is made on Ubuntu 24.04 against \`webkit2gtk-4.1\`, so an"
+            echo "older distribution may need that library. Windows needs the WebView2"
+            echo "runtime, which ships with Windows 11 and recent Windows 10."
+            echo
+            cat notes.md
+          } > release-body.md
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          # The commit that changed VERSION is the one being released.
+          commit: ${{ github.sha }}
+          artifacts: dist/*
+          bodyFile: release-body.md
+
+      # The same notes kept in the tree, so what changed when can be read
+      # without going to the releases page for it.
+      - name: Add it to the changelog
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          python3 .github/scripts/prepend_changelog.py "$TAG" notes.md CHANGELOG.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          # [skip ci]: a changelog does not need the test suite run over it.
+          git commit -m "docs: changelog for $TAG [skip ci]"
+          # Something may have merged while the build was running.
+          git pull --rebase origin main
+          git push origin HEAD:main
