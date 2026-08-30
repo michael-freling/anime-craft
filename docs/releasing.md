@@ -28,6 +28,11 @@ carries the version, so there is no second place to forget.
 3. **Tag and release.** The tag is created on the commit that changed `VERSION`,
    and both archives are attached to a GitHub release with generated notes.
 
+A pull request that touches `VERSION` or the workflow itself runs steps 1 and 2
+and stops: the binaries are built and left as workflow artifacts, so a change to
+the release machinery is proved before it is merged rather than on the release
+it breaks. Nothing is tagged or published from a pull request.
+
 ## Choosing the number
 
 Ordinary [semantic versioning](https://semver.org): patch for fixes, minor for

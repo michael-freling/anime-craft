@@ -9,6 +9,13 @@ on:
     branches: [main]
     paths:
       - VERSION
+  # A change to the release machinery gets its build run before it is merged,
+  # rather than finding out on the release itself. Nothing is tagged or
+  # published from a pull request.
+  pull_request:
+    paths:
+      - VERSION
+      - .github/workflows/release.yml
   # For re-running a release whose build failed on something unrelated.
   workflow_dispatch:
 
@@ -22,7 +29,8 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
       tag: ${{ steps.read.outputs.tag }}
-      release: ${{ steps.read.outputs.release }}
+      build: ${{ steps.read.outputs.build }}
+      publish: ${{ steps.read.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,20 +50,27 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-          # Touching VERSION without changing it — a rebase, a typo fix in a
-          # comment — should not try to release the same version twice.
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Build it to prove the build works; releasing is for main.
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dry run for $tag: building, not releasing."
+          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # Touching VERSION without changing it — a rebase, a typo fix in a
+            # comment — should not try to release the same version twice.
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "::notice::$tag is already released; there is nothing to do."
           else
-            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Releasing $tag."
           fi
 
   build:
     name: Build for ${{ matrix.os }}
     needs: prepare
-    if: needs.prepare.outputs.release == 'true'
+    if: needs.prepare.outputs.build == 'true'
     runs-on: ubuntu-latest
     strategy:
       # One platform failing should not hide whether the other one works.
@@ -123,6 +138,7 @@ jobs:
   publish:
     name: Tag and release
     needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       # To create the tag and the release.
