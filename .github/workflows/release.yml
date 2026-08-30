@@ -150,10 +150,12 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
-      # To create the tag and the release.
+      # To create the tag and the release, and to write the changelog back.
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/download-artifact@v4
         with:
@@ -163,26 +165,62 @@ jobs:
 
       - run: ls -l dist
 
+      # The list of merged pull requests is asked for once and used twice — as
+      # the release body and as the changelog entry. Generating it in two
+      # places would eventually mean two lists that disagree.
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body > notes.md
+          cat notes.md
+
+          {
+            echo "## Downloads"
+            echo
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| Linux (x86-64) | \`anime-craft-$VERSION-linux-amd64.tar.gz\` |"
+            echo "| Windows (x86-64) | \`anime-craft-$VERSION-windows-amd64.zip\` |"
+            echo
+            echo "Drawing, layers, saving and resuming all work from the download alone."
+            echo "The **analysis** — line-art extraction and feedback on a submitted"
+            echo "drawing — talks to the Python inference service in \`inference/\`, which"
+            echo "runs separately; without it the app still starts and says so."
+            echo
+            echo "The Linux build is made on Ubuntu 24.04 against \`webkit2gtk-4.1\`, so an"
+            echo "older distribution may need that library. Windows needs the WebView2"
+            echo "runtime, which ships with Windows 11 and recent Windows 10."
+            echo
+            cat notes.md
+          } > release-body.md
+
       - uses: ncipollo/release-action@v1
         with:
           tag: ${{ needs.prepare.outputs.tag }}
           # The commit that changed VERSION is the one being released.
           commit: ${{ github.sha }}
           artifacts: dist/*
-          generateReleaseNotes: true
-          body: |
-            ## Downloads
+          bodyFile: release-body.md
 
-            | Platform | File |
-            | --- | --- |
-            | Linux (x86-64) | `anime-craft-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz` |
-            | Windows (x86-64) | `anime-craft-${{ needs.prepare.outputs.version }}-windows-amd64.zip` |
+      # The same notes kept in the tree, so what changed when can be read
+      # without going to the releases page for it.
+      - name: Add it to the changelog
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          python3 .github/scripts/prepend_changelog.py "$TAG" notes.md CHANGELOG.md
 
-            Drawing, layers, saving and resuming all work from the download alone.
-            The **analysis** — line-art extraction and feedback on a submitted
-            drawing — talks to the Python inference service in `inference/`, which
-            runs separately; without it the app still starts and says so.
-
-            The Linux build is made on Ubuntu 24.04 against `webkit2gtk-4.1`, so an
-            older distribution may need that library. Windows needs the WebView2
-            runtime, which ships with Windows 11 and recent Windows 10.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          # [skip ci]: a changelog does not need the test suite run over it.
+          git commit -m "docs: changelog for $TAG [skip ci]"
+          # Something may have merged while the build was running.
+          git pull --rebase origin main
+          git push origin HEAD:main
