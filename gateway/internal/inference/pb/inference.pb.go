@@ -488,18 +488,6 @@ type HealthCheckResponse struct {
 	LineArtReady  bool                   `protobuf:"varint,1,opt,name=line_art_ready,json=lineArtReady,proto3" json:"line_art_ready,omitempty"`
 	FeedbackReady bool                   `protobuf:"varint,2,opt,name=feedback_ready,json=feedbackReady,proto3" json:"feedback_ready,omitempty"`
 	StatusMessage string                 `protobuf:"bytes,3,opt,name=status_message,json=statusMessage,proto3" json:"status_message,omitempty"`
-	// The longest edge, in pixels, that this service can make use of. Both
-	// models resize their input, so anything larger is discarded before either
-	// of them sees it — a caller that scales an image down to this first spends
-	// nothing sending pixels that will be thrown away.
-	//
-	// It belongs here because only this service knows what its models do with an
-	// image; a caller that hardcoded a size would be guessing, and would go on
-	// guessing the same number after a model was reconfigured or replaced.
-	//
-	// Zero means the service is not saying, and the caller should send the image
-	// as it is.
-	MaxImageEdge  int32 `protobuf:"varint,4,opt,name=max_image_edge,json=maxImageEdge,proto3" json:"max_image_edge,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -555,7 +543,92 @@ func (x *HealthCheckResponse) GetStatusMessage() string {
 	return ""
 }
 
-func (x *HealthCheckResponse) GetMaxImageEdge() int32 {
+type GetConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigRequest) Reset() {
+	*x = GetConfigRequest{}
+	mi := &file_inference_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigRequest) ProtoMessage() {}
+
+func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_inference_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigRequest) Descriptor() ([]byte, []int) {
+	return file_inference_proto_rawDescGZIP(), []int{9}
+}
+
+type GetConfigResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The longest edge, in pixels, that this service can make use of. Both
+	// models resize their input, so anything larger is discarded before either
+	// of them sees it — a caller that scales an image down to this first spends
+	// nothing sending pixels that will be thrown away.
+	//
+	// It is reported rather than left to the caller because only this service
+	// knows what its models do with an image; a caller that hardcoded a size
+	// would be guessing, and would go on guessing the same number after a model
+	// was reconfigured or replaced.
+	//
+	// Zero means the service is not saying, and the caller should send the image
+	// as it is.
+	MaxImageEdge  int32 `protobuf:"varint,1,opt,name=max_image_edge,json=maxImageEdge,proto3" json:"max_image_edge,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigResponse) Reset() {
+	*x = GetConfigResponse{}
+	mi := &file_inference_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigResponse) ProtoMessage() {}
+
+func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_inference_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigResponse) Descriptor() ([]byte, []int) {
+	return file_inference_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetConfigResponse) GetMaxImageEdge() int32 {
 	if x != nil {
 		return x.MaxImageEdge
 	}
@@ -599,17 +672,20 @@ const file_inference_proto_rawDesc = "" +
 	"\x15CompareImagesResponse\x12\x1f\n" +
 	"\vheatmap_png\x18\x01 \x01(\fR\n" +
 	"heatmapPng\"\x14\n" +
-	"\x12HealthCheckRequest\"\xaf\x01\n" +
+	"\x12HealthCheckRequest\"\x89\x01\n" +
 	"\x13HealthCheckResponse\x12$\n" +
 	"\x0eline_art_ready\x18\x01 \x01(\bR\flineArtReady\x12%\n" +
 	"\x0efeedback_ready\x18\x02 \x01(\bR\rfeedbackReady\x12%\n" +
-	"\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage\x12$\n" +
-	"\x0emax_image_edge\x18\x04 \x01(\x05R\fmaxImageEdge2\xc2\x03\n" +
+	"\x0estatus_message\x18\x03 \x01(\tR\rstatusMessage\"\x12\n" +
+	"\x10GetConfigRequest\"9\n" +
+	"\x11GetConfigResponse\x12$\n" +
+	"\x0emax_image_edge\x18\x01 \x01(\x05R\fmaxImageEdge2\xa0\x04\n" +
 	"\x10InferenceService\x12k\n" +
 	"\x0eExtractLineArt\x12+.animecraft.inference.ExtractLineArtRequest\x1a,.animecraft.inference.ExtractLineArtResponse\x12s\n" +
 	"\x10GenerateFeedback\x12-.animecraft.inference.GenerateFeedbackRequest\x1a..animecraft.inference.GenerateFeedbackResponse0\x01\x12h\n" +
 	"\rCompareImages\x12*.animecraft.inference.CompareImagesRequest\x1a+.animecraft.inference.CompareImagesResponse\x12b\n" +
-	"\vHealthCheck\x12(.animecraft.inference.HealthCheckRequest\x1a).animecraft.inference.HealthCheckResponseBFZDgithub.com/michael-freling/anime-craft/gateway/internal/inference/pbb\x06proto3"
+	"\vHealthCheck\x12(.animecraft.inference.HealthCheckRequest\x1a).animecraft.inference.HealthCheckResponse\x12\\\n" +
+	"\tGetConfig\x12&.animecraft.inference.GetConfigRequest\x1a'.animecraft.inference.GetConfigResponseBFZDgithub.com/michael-freling/anime-craft/gateway/internal/inference/pbb\x06proto3"
 
 var (
 	file_inference_proto_rawDescOnce sync.Once
@@ -623,7 +699,7 @@ func file_inference_proto_rawDescGZIP() []byte {
 	return file_inference_proto_rawDescData
 }
 
-var file_inference_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_inference_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_inference_proto_goTypes = []any{
 	(*ExtractLineArtRequest)(nil),    // 0: animecraft.inference.ExtractLineArtRequest
 	(*ExtractLineArtResponse)(nil),   // 1: animecraft.inference.ExtractLineArtResponse
@@ -634,22 +710,26 @@ var file_inference_proto_goTypes = []any{
 	(*CompareImagesResponse)(nil),    // 6: animecraft.inference.CompareImagesResponse
 	(*HealthCheckRequest)(nil),       // 7: animecraft.inference.HealthCheckRequest
 	(*HealthCheckResponse)(nil),      // 8: animecraft.inference.HealthCheckResponse
+	(*GetConfigRequest)(nil),         // 9: animecraft.inference.GetConfigRequest
+	(*GetConfigResponse)(nil),        // 10: animecraft.inference.GetConfigResponse
 }
 var file_inference_proto_depIdxs = []int32{
-	4, // 0: animecraft.inference.GenerateFeedbackResponse.result:type_name -> animecraft.inference.FeedbackResult
-	0, // 1: animecraft.inference.InferenceService.ExtractLineArt:input_type -> animecraft.inference.ExtractLineArtRequest
-	2, // 2: animecraft.inference.InferenceService.GenerateFeedback:input_type -> animecraft.inference.GenerateFeedbackRequest
-	5, // 3: animecraft.inference.InferenceService.CompareImages:input_type -> animecraft.inference.CompareImagesRequest
-	7, // 4: animecraft.inference.InferenceService.HealthCheck:input_type -> animecraft.inference.HealthCheckRequest
-	1, // 5: animecraft.inference.InferenceService.ExtractLineArt:output_type -> animecraft.inference.ExtractLineArtResponse
-	3, // 6: animecraft.inference.InferenceService.GenerateFeedback:output_type -> animecraft.inference.GenerateFeedbackResponse
-	6, // 7: animecraft.inference.InferenceService.CompareImages:output_type -> animecraft.inference.CompareImagesResponse
-	8, // 8: animecraft.inference.InferenceService.HealthCheck:output_type -> animecraft.inference.HealthCheckResponse
-	5, // [5:9] is the sub-list for method output_type
-	1, // [1:5] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	4,  // 0: animecraft.inference.GenerateFeedbackResponse.result:type_name -> animecraft.inference.FeedbackResult
+	0,  // 1: animecraft.inference.InferenceService.ExtractLineArt:input_type -> animecraft.inference.ExtractLineArtRequest
+	2,  // 2: animecraft.inference.InferenceService.GenerateFeedback:input_type -> animecraft.inference.GenerateFeedbackRequest
+	5,  // 3: animecraft.inference.InferenceService.CompareImages:input_type -> animecraft.inference.CompareImagesRequest
+	7,  // 4: animecraft.inference.InferenceService.HealthCheck:input_type -> animecraft.inference.HealthCheckRequest
+	9,  // 5: animecraft.inference.InferenceService.GetConfig:input_type -> animecraft.inference.GetConfigRequest
+	1,  // 6: animecraft.inference.InferenceService.ExtractLineArt:output_type -> animecraft.inference.ExtractLineArtResponse
+	3,  // 7: animecraft.inference.InferenceService.GenerateFeedback:output_type -> animecraft.inference.GenerateFeedbackResponse
+	6,  // 8: animecraft.inference.InferenceService.CompareImages:output_type -> animecraft.inference.CompareImagesResponse
+	8,  // 9: animecraft.inference.InferenceService.HealthCheck:output_type -> animecraft.inference.HealthCheckResponse
+	10, // 10: animecraft.inference.InferenceService.GetConfig:output_type -> animecraft.inference.GetConfigResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_inference_proto_init() }
@@ -667,7 +747,7 @@ func file_inference_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_inference_proto_rawDesc), len(file_inference_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

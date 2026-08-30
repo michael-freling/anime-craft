@@ -56,8 +56,8 @@ except ImportError:
 # — arrive rather than being rejected.
 UNLIMITED_MESSAGE_BYTES = -1
 
-# The longest edge this service can make use of, reported to callers in the
-# health check so they can scale an image down before sending it.
+# The longest edge this service can make use of, reported to callers by
+# GetConfig so they can scale an image down before sending it.
 #
 # Derived from what the models actually do, rather than written out again here:
 # the line art model resizes everything to INPUT_SIZE square, and the feedback
@@ -235,8 +235,20 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
             line_art_ready=lineart_ready,
             feedback_ready=feedback_ready,
             status_message=status,
-            max_image_edge=MAX_IMAGE_EDGE,
         )
+
+    def GetConfig(
+        self,
+        request: inference_pb2.GetConfigRequest,
+        context: grpc.ServicerContext,
+    ) -> inference_pb2.GetConfigResponse:
+        """Report what a caller needs to know to talk to this service well.
+
+        Kept apart from HealthCheck because it answers a different question:
+        health changes from moment to moment and is polled, while this is
+        settled when the service starts and is read once.
+        """
+        return inference_pb2.GetConfigResponse(max_image_edge=MAX_IMAGE_EDGE)
 
 
 def serve(config: Config) -> None:

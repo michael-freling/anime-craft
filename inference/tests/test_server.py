@@ -55,15 +55,29 @@ def test_the_server_places_no_limit_on_message_size():
     assert server.UNLIMITED_MESSAGE_BYTES == -1
 
 
-def test_the_health_check_reports_the_image_size_the_models_can_use():
+def test_get_config_reports_the_image_size_the_models_can_use():
     """A caller that hardcoded a size would be guessing about these models, and
     would go on guessing the same number after one was reconfigured."""
     loaded = SimpleNamespace(is_loaded=True)
     servicer = server.InferenceServicer(loaded, loaded)
-    response = servicer.HealthCheck(inference_pb2.HealthCheckRequest(), None)
+
+    response = servicer.GetConfig(inference_pb2.GetConfigRequest(), None)
 
     assert response.max_image_edge == server.MAX_IMAGE_EDGE
     assert response.max_image_edge > 0
+
+
+def test_the_health_check_answers_only_about_health():
+    """Configuration is a different question, settled at startup and read once,
+    so it does not belong in something polled for liveness."""
+    loaded = SimpleNamespace(is_loaded=True)
+    servicer = server.InferenceServicer(loaded, loaded)
+
+    response = servicer.HealthCheck(inference_pb2.HealthCheckRequest(), None)
+
+    assert response.line_art_ready
+    assert response.feedback_ready
+    assert not hasattr(response, "max_image_edge")
 
 
 def test_the_reported_size_follows_the_models():

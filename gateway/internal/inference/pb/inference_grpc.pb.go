@@ -23,6 +23,7 @@ const (
 	InferenceService_GenerateFeedback_FullMethodName = "/animecraft.inference.InferenceService/GenerateFeedback"
 	InferenceService_CompareImages_FullMethodName    = "/animecraft.inference.InferenceService/CompareImages"
 	InferenceService_HealthCheck_FullMethodName      = "/animecraft.inference.InferenceService/HealthCheck"
+	InferenceService_GetConfig_FullMethodName        = "/animecraft.inference.InferenceService/GetConfig"
 )
 
 // InferenceServiceClient is the client API for InferenceService service.
@@ -39,6 +40,11 @@ type InferenceServiceClient interface {
 	CompareImages(ctx context.Context, in *CompareImagesRequest, opts ...grpc.CallOption) (*CompareImagesResponse, error)
 	// HealthCheck reports whether the service and its models are loaded.
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	// GetConfig reports what a caller needs to know to talk to this service
+	// well. Separate from HealthCheck because it answers a different question:
+	// health changes from moment to moment and is polled, while configuration
+	// is settled when the service starts and is read once.
+	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
 }
 
 type inferenceServiceClient struct {
@@ -98,6 +104,16 @@ func (c *inferenceServiceClient) HealthCheck(ctx context.Context, in *HealthChec
 	return out, nil
 }
 
+func (c *inferenceServiceClient) GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetConfigResponse)
+	err := c.cc.Invoke(ctx, InferenceService_GetConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InferenceServiceServer is the server API for InferenceService service.
 // All implementations must embed UnimplementedInferenceServiceServer
 // for forward compatibility.
@@ -112,6 +128,11 @@ type InferenceServiceServer interface {
 	CompareImages(context.Context, *CompareImagesRequest) (*CompareImagesResponse, error)
 	// HealthCheck reports whether the service and its models are loaded.
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	// GetConfig reports what a caller needs to know to talk to this service
+	// well. Separate from HealthCheck because it answers a different question:
+	// health changes from moment to moment and is polled, while configuration
+	// is settled when the service starts and is read once.
+	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
 	mustEmbedUnimplementedInferenceServiceServer()
 }
 
@@ -133,6 +154,9 @@ func (UnimplementedInferenceServiceServer) CompareImages(context.Context, *Compa
 }
 func (UnimplementedInferenceServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedInferenceServiceServer) GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetConfig not implemented")
 }
 func (UnimplementedInferenceServiceServer) mustEmbedUnimplementedInferenceServiceServer() {}
 func (UnimplementedInferenceServiceServer) testEmbeddedByValue()                          {}
@@ -220,6 +244,24 @@ func _InferenceService_HealthCheck_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InferenceService_GetConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InferenceServiceServer).GetConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InferenceService_GetConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InferenceServiceServer).GetConfig(ctx, req.(*GetConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InferenceService_ServiceDesc is the grpc.ServiceDesc for InferenceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -238,6 +280,10 @@ var InferenceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _InferenceService_HealthCheck_Handler,
+		},
+		{
+			MethodName: "GetConfig",
+			Handler:    _InferenceService_GetConfig_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

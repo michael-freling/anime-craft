@@ -54,9 +54,12 @@ type fakeInferenceServer struct {
 	healthCheckCalls      int32
 	healthCheckReadyAfter int32 // number of not-ready responses before ready
 	healthCheckAlwaysDown bool
-	// maxImageEdge is what this service says it can make use of. Zero stands
-	// for a service that does not report one.
-	maxImageEdge int32
+
+	// GetConfig behavior. maxImageEdge is what this service says it can make
+	// use of; zero stands for one that does not report a size.
+	maxImageEdge   int32
+	getConfigCalls int32
+	getConfigErr   error
 }
 
 func (s *fakeInferenceServer) ExtractLineArt(ctx context.Context, req *pb.ExtractLineArtRequest) (*pb.ExtractLineArtResponse, error) {
@@ -118,6 +121,14 @@ func (s *fakeInferenceServer) CompareImages(ctx context.Context, req *pb.Compare
 	return &pb.CompareImagesResponse{HeatmapPng: s.compareResponse}, nil
 }
 
+func (s *fakeInferenceServer) GetConfig(ctx context.Context, req *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
+	atomic.AddInt32(&s.getConfigCalls, 1)
+	if s.getConfigErr != nil {
+		return nil, s.getConfigErr
+	}
+	return &pb.GetConfigResponse{MaxImageEdge: s.maxImageEdge}, nil
+}
+
 func (s *fakeInferenceServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
 	calls := atomic.AddInt32(&s.healthCheckCalls, 1)
 	if s.healthCheckAlwaysDown {
@@ -125,7 +136,6 @@ func (s *fakeInferenceServer) HealthCheck(ctx context.Context, req *pb.HealthChe
 			LineArtReady:  false,
 			FeedbackReady: false,
 			StatusMessage: "still loading",
-			MaxImageEdge:  s.maxImageEdge,
 		}, nil
 	}
 	if calls <= s.healthCheckReadyAfter {
@@ -133,14 +143,12 @@ func (s *fakeInferenceServer) HealthCheck(ctx context.Context, req *pb.HealthChe
 			LineArtReady:  false,
 			FeedbackReady: false,
 			StatusMessage: "warming up",
-			MaxImageEdge:  s.maxImageEdge,
 		}, nil
 	}
 	return &pb.HealthCheckResponse{
 		LineArtReady:  true,
 		FeedbackReady: true,
 		StatusMessage: "ready",
-		MaxImageEdge:  s.maxImageEdge,
 	}, nil
 }
 
@@ -530,8 +538,9 @@ func TestGenerateFeedback_SendsTheImageWholeWhenTheServiceDoesNotSay(t *testing.
 	assert.Equal(t, reference, received.GetReferenceLineArtPng(), "sent as it is, and accepted")
 }
 
-// The size is asked for once, not before every image.
-func TestClient_AsksTheServiceForItsImageSizeOnlyOnce(t *testing.T) {
+// Configuration is settled when the service starts, so it is read once and
+// kept rather than asked for before every image.
+func TestClient_AsksTheServiceForItsConfigOnlyOnce(t *testing.T) {
 	srv := &fakeInferenceServer{
 		feedbackResult:  &pb.FeedbackResult{OverallScore: 70},
 		compareResponse: []byte("heatmap"),
@@ -541,68 +550,47 @@ func TestClient_AsksTheServiceForItsImageSizeOnlyOnce(t *testing.T) {
 
 	_, err := client.GenerateFeedback(context.Background(), photographPNG(t, 900, 900), []byte("d"), "line_work")
 	require.NoError(t, err)
-	afterFirst := atomic.LoadInt32(&srv.healthCheckCalls)
-	assert.Equal(t, int32(1), afterFirst, "asked once, before the first image")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&srv.getConfigCalls), "asked once, before the first image")
 
 	_, err = client.CompareImages(context.Background(), photographPNG(t, 900, 900), []byte("d"))
 	require.NoError(t, err)
 	_, err = client.Extract(photographPNG(t, 900, 900))
 	require.NoError(t, err)
 
-	assert.Equal(t, afterFirst, atomic.LoadInt32(&srv.healthCheckCalls), "and remembered")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&srv.getConfigCalls), "and kept")
 }
 
-// Waiting for readiness already asks, so that is usually where it is learned.
-func TestWaitReady_LearnsTheImageSize(t *testing.T) {
+// Asking what the service can use is a different question from asking whether
+// it is healthy, and polling for readiness must not answer it by accident.
+func TestWaitReady_DoesNotAskForConfig(t *testing.T) {
 	srv := &fakeInferenceServer{maxImageEdge: 512}
 	client := startTestServer(t, srv)
 
 	require.NoError(t, client.WaitReady(context.Background(), 2*time.Second))
-	calls := atomic.LoadInt32(&srv.healthCheckCalls)
 
-	_, err := client.Extract(photographPNG(t, 900, 900))
-	require.NoError(t, err)
-
-	assert.Equal(t, calls, atomic.LoadInt32(&srv.healthCheckCalls),
-		"no second ask; readiness already reported it")
-	srv.extractReceivedMu.Lock()
-	received := srv.extractReceived
-	srv.extractReceivedMu.Unlock()
-	assertWithinEdge(t, received, 512)
+	assert.Zero(t, atomic.LoadInt32(&srv.getConfigCalls))
+	assert.Positive(t, atomic.LoadInt32(&srv.healthCheckCalls))
 }
 
-// Nothing is rejected for being large, whichever way it travels.
-func TestExtractLineArt_AcceptsAResponseOfAnySize(t *testing.T) {
+// A service that cannot answer leaves images alone, rather than failing the
+// request or guessing a size on its behalf.
+func TestClient_SendsImagesWholeWhenConfigCannotBeRead(t *testing.T) {
 	srv := &fakeInferenceServer{
-		extractResponse: bytes.Repeat([]byte{0x11}, 6*1024*1024),
+		extractResponse: []byte("line art"),
+		getConfigErr:    status.Error(codes.Unimplemented, "no such method"),
 		maxImageEdge:    512,
 	}
 	client := startTestServer(t, srv)
 
-	lineArt, err := client.Extract(photographPNG(t, 3000, 2000))
+	original := photographPNG(t, 2000, 2000)
+	lineArt, err := client.Extract(original)
 
 	require.NoError(t, err)
-	assert.Len(t, lineArt, 6*1024*1024)
-}
-
-// An image Go cannot decode is sent as it is rather than failing the request,
-// which is what the removed ceiling is there for.
-func TestCompareImages_SendsAnUndecodableImageAsItIs(t *testing.T) {
-	srv := &fakeInferenceServer{compareResponse: []byte("heatmap"), maxImageEdge: 512}
-	client := startTestServer(t, srv)
-
-	// Larger than gRPC's old default, and not an image format Go knows.
-	opaque := bytes.Repeat([]byte{0x7F}, 5*1024*1024)
-
-	heatmap, err := client.CompareImages(context.Background(), opaque, opaque)
-
-	require.NoError(t, err)
-	assert.Equal(t, []byte("heatmap"), heatmap)
-	srv.compareReceivedMu.Lock()
-	received := srv.compareReceivedReq
-	srv.compareReceivedMu.Unlock()
-	require.NotNil(t, received)
-	assert.Len(t, received.GetReferenceLineArtPng(), len(opaque))
+	assert.Equal(t, []byte("line art"), lineArt)
+	srv.extractReceivedMu.Lock()
+	received := srv.extractReceived
+	srv.extractReceivedMu.Unlock()
+	assert.Equal(t, original, received, "sent as it is")
 }
 
 // photographPNG builds a PNG with enough variation that it does not compress

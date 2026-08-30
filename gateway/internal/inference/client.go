@@ -35,9 +35,12 @@ type Client struct {
 	conn   *grpc.ClientConn
 	client pb.InferenceServiceClient
 
-	// maxImageEdge is what the service said it can make use of, learned from
-	// its health check rather than assumed here. Zero until it has said, in
-	// which case images are sent as they are.
+	// maxImageEdge is what the service said it can make use of, asked for
+	// rather than assumed here. Zero until it has been asked, or when the
+	// service declines to say, in which case images are sent as they are.
+	//
+	// Read once and kept: it is configuration, settled when the service
+	// starts, not something that changes underneath a running app.
 	maxImageEdgeMu sync.RWMutex
 	maxImageEdge   int
 }
@@ -185,7 +188,7 @@ func (c *Client) shrink(ctx context.Context, imageData []byte) []byte {
 }
 
 // imageEdge returns the longest edge the service can make use of, asking it
-// once and remembering the answer.
+// once and keeping the answer.
 //
 // A service that does not report one — an older build, or one that declines to
 // say — leaves this at zero, and images are sent as they are. Guessing a size
@@ -198,21 +201,14 @@ func (c *Client) imageEdge(ctx context.Context) int {
 		return known
 	}
 
-	// A health check is cheap, and the answer is wanted before the first
-	// image goes out rather than after.
 	askCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	resp, err := c.client.HealthCheck(askCtx, &pb.HealthCheckRequest{})
+	resp, err := c.client.GetConfig(askCtx, &pb.GetConfigRequest{})
 	if err != nil {
 		slog.Debug("could not ask the service what image size it can use", "error", err)
 		return 0
 	}
-	return c.rememberImageEdge(resp)
-}
 
-// rememberImageEdge keeps what a health check reported, so every health check
-// the client makes teaches it, not only the one asked on purpose.
-func (c *Client) rememberImageEdge(resp *pb.HealthCheckResponse) int {
 	edge := int(resp.GetMaxImageEdge())
 	if edge <= 0 {
 		return 0
@@ -236,11 +232,6 @@ func (c *Client) WaitReady(ctx context.Context, timeout time.Duration) error {
 
 	for {
 		resp, err := c.client.HealthCheck(ctx, &pb.HealthCheckRequest{})
-		if err == nil {
-			// Every health check reports the image size it can use, so
-			// waiting for readiness is usually where that is learned.
-			c.rememberImageEdge(resp)
-		}
 		if err == nil && resp.GetLineArtReady() && resp.GetFeedbackReady() {
 			slog.Info("inference service is ready", "status", resp.GetStatusMessage())
 			return nil
