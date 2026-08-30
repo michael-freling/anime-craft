@@ -10,6 +10,7 @@ Run with: python -m animecraft_inference.server
 
 import argparse
 import logging
+import math
 import signal
 import sys
 import threading
@@ -21,9 +22,13 @@ import grpc
 
 from animecraft_inference.config import Config, load_config
 from animecraft_inference.feedback.generator import (
+    MAX_PIXELS as FEEDBACK_MAX_PIXELS,
+)
+from animecraft_inference.feedback.generator import (
     FeedbackGenerator,
     parse_feedback_json,
 )
+from animecraft_inference.lineart.extractor import INPUT_SIZE as LINEART_INPUT_SIZE
 from animecraft_inference.lineart.extractor import LineArtExtractor
 
 # Import generated protobuf stubs.
@@ -38,6 +43,28 @@ except ImportError:
         file=sys.stderr,
     )
     raise
+
+
+# gRPC's own value for "no limit". Its 4MB default refused a request carrying a
+# photographic reference outright, and any fixed number in its place would only
+# choose how large an image has to be before the app fails rather than stopping
+# there being a larger one.
+#
+# Callers are told what size is worth sending (see MAX_IMAGE_EDGE), so requests
+# are small whatever was uploaded; this is here so that the cases that cannot
+# help with — a format the caller does not decode, and so passes through whole
+# — arrive rather than being rejected.
+UNLIMITED_MESSAGE_BYTES = -1
+
+# The longest edge this service can make use of, reported to callers by
+# GetConfig so they can scale an image down before sending it.
+#
+# Derived from what the models actually do, rather than written out again here:
+# the line art model resizes everything to INPUT_SIZE square, and the feedback
+# model's processor scales anything over MAX_PIXELS down. Reconfiguring or
+# replacing either one moves this number with it, which is the point of
+# reporting it instead of letting callers hold their own copy.
+MAX_IMAGE_EDGE = max(LINEART_INPUT_SIZE, math.isqrt(FEEDBACK_MAX_PIXELS))
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +237,19 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
             status_message=status,
         )
 
+    def GetConfig(
+        self,
+        request: inference_pb2.GetConfigRequest,
+        context: grpc.ServicerContext,
+    ) -> inference_pb2.GetConfigResponse:
+        """Report what a caller needs to know to talk to this service well.
+
+        Kept apart from HealthCheck because it answers a different question:
+        health changes from moment to moment and is polled, while this is
+        settled when the service starts and is read once.
+        """
+        return inference_pb2.GetConfigResponse(max_image_edge=MAX_IMAGE_EDGE)
+
 
 def serve(config: Config) -> None:
     """Start the gRPC server and block until shutdown."""
@@ -235,7 +275,13 @@ def serve(config: Config) -> None:
         logger.exception("Failed to load feedback model — continuing without it")
 
     # Create gRPC server
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        options=[
+            ("grpc.max_receive_message_length", UNLIMITED_MESSAGE_BYTES),
+            ("grpc.max_send_message_length", UNLIMITED_MESSAGE_BYTES),
+        ],
+    )
     servicer = InferenceServicer(lineart_extractor, feedback_generator)
     inference_pb2_grpc.add_InferenceServiceServicer_to_server(servicer, server)
 

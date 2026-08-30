@@ -1,7 +1,11 @@
 package inference
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/png"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -10,8 +14,12 @@ import (
 	"time"
 
 	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -46,6 +54,12 @@ type fakeInferenceServer struct {
 	healthCheckCalls      int32
 	healthCheckReadyAfter int32 // number of not-ready responses before ready
 	healthCheckAlwaysDown bool
+
+	// GetConfig behavior. maxImageEdge is what this service says it can make
+	// use of; zero stands for one that does not report a size.
+	maxImageEdge   int32
+	getConfigCalls int32
+	getConfigErr   error
 }
 
 func (s *fakeInferenceServer) ExtractLineArt(ctx context.Context, req *pb.ExtractLineArtRequest) (*pb.ExtractLineArtResponse, error) {
@@ -107,6 +121,14 @@ func (s *fakeInferenceServer) CompareImages(ctx context.Context, req *pb.Compare
 	return &pb.CompareImagesResponse{HeatmapPng: s.compareResponse}, nil
 }
 
+func (s *fakeInferenceServer) GetConfig(ctx context.Context, req *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
+	atomic.AddInt32(&s.getConfigCalls, 1)
+	if s.getConfigErr != nil {
+		return nil, s.getConfigErr
+	}
+	return &pb.GetConfigResponse{MaxImageEdge: s.maxImageEdge}, nil
+}
+
 func (s *fakeInferenceServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
 	calls := atomic.AddInt32(&s.healthCheckCalls, 1)
 	if s.healthCheckAlwaysDown {
@@ -137,7 +159,12 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 	t.Helper()
 
 	listener := bufconn.Listen(bufSize)
-	grpcServer := grpc.NewServer()
+	// Configured the way the real pair is, so the tests exercise what the app
+	// actually runs with rather than gRPC's defaults.
+	grpcServer := grpc.NewServer(
+		grpc.MaxRecvMsgSize(unlimitedMessageBytes),
+		grpc.MaxSendMsgSize(unlimitedMessageBytes),
+	)
 	pb.RegisterInferenceServiceServer(grpcServer, srv)
 
 	serveErrCh := make(chan error, 1)
@@ -153,6 +180,10 @@ func startTestServer(t *testing.T, srv *fakeInferenceServer) *Client {
 		"passthrough:///bufnet",
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(unlimitedMessageBytes),
+			grpc.MaxCallSendMsgSize(unlimitedMessageBytes),
+		),
 	)
 	if err != nil {
 		grpcServer.Stop()
@@ -385,4 +416,202 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// ResourceExhausted means two different things on this connection: the service
+// turning away a second concurrent feedback request, which passes, and gRPC
+// refusing a message over the size limit, which never will. Retrying the
+// second turned a request that could not succeed into two minutes of backoff.
+func TestWorthRetrying(t *testing.T) {
+	tests := []struct {
+		name  string
+		err   error
+		retry bool
+	}{
+		{
+			name:  "the service is still starting up",
+			err:   status.Error(codes.Unavailable, "model is loading"),
+			retry: true,
+		},
+		{
+			name:  "another feedback request is already running",
+			err:   status.Error(codes.ResourceExhausted, "Another feedback request is already in progress. Please wait."),
+			retry: true,
+		},
+		{
+			name:  "the message is too large for the service",
+			err:   status.Error(codes.ResourceExhausted, "SERVER: Received message larger than max (4425484 vs. 4194304)"),
+			retry: false,
+		},
+		{
+			name:  "the response is too large for us",
+			err:   status.Error(codes.ResourceExhausted, "grpc: received message larger than max (5000000 vs. 4194304)"),
+			retry: false,
+		},
+		{
+			name:  "the request was rejected outright",
+			err:   status.Error(codes.InvalidArgument, "drawing_png must not be empty."),
+			retry: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.retry, worthRetrying(status.Code(test.err), test.err))
+		})
+	}
+}
+
+// Nothing is refused for being large. A fixed ceiling would only choose how
+// big an image has to be before the app fails.
+func TestNoMessageSizeCeiling(t *testing.T) {
+	assert.Equal(t, math.MaxInt32, unlimitedMessageBytes,
+		"the inference service uses gRPC's own -1 for the same thing")
+}
+
+// The reported failure: a photographic reference and a drawing came to 4.4MB
+// together and were refused by gRPC's 4MB default. The photograph now arrives
+// at the size the service asked for.
+func TestGenerateFeedback_SendsAPhotographAtTheSizeTheServiceAsksFor(t *testing.T) {
+	srv := &fakeInferenceServer{
+		feedbackResult: &pb.FeedbackResult{OverallScore: 70, Summary: "ok"},
+		maxImageEdge:   512,
+	}
+	client := startTestServer(t, srv)
+
+	reference := photographPNG(t, 4000, 3000)
+	require.Greater(t, len(reference), 4*1024*1024, "the kind of upload that was being refused")
+	drawing := photographPNG(t, 400, 300)
+
+	result, err := client.GenerateFeedback(context.Background(), reference, drawing, "line_work")
+	require.NoError(t, err)
+	assert.Equal(t, int32(70), result.GetOverallScore())
+
+	srv.feedbackReceivedMu.Lock()
+	received := srv.feedbackReceivedReq
+	srv.feedbackReceivedMu.Unlock()
+	require.NotNil(t, received)
+
+	assert.Less(t, len(received.GetReferenceLineArtPng()), len(reference),
+		"the reference was shrunk rather than sent whole")
+	assertWithinEdge(t, received.GetReferenceLineArtPng(), 512)
+	// A drawing already within what was asked for is passed through untouched.
+	assert.Equal(t, drawing, received.GetDrawingPng())
+}
+
+// The size is the service's to decide, so a different service gets a different
+// size sent to it — nothing here holds an opinion about its models.
+func TestGenerateFeedback_FollowsWhateverSizeTheServiceReports(t *testing.T) {
+	srv := &fakeInferenceServer{
+		feedbackResult: &pb.FeedbackResult{OverallScore: 70},
+		maxImageEdge:   256,
+	}
+	client := startTestServer(t, srv)
+
+	_, err := client.GenerateFeedback(context.Background(),
+		photographPNG(t, 2000, 2000), photographPNG(t, 2000, 2000), "line_work")
+	require.NoError(t, err)
+
+	srv.feedbackReceivedMu.Lock()
+	received := srv.feedbackReceivedReq
+	srv.feedbackReceivedMu.Unlock()
+	assertWithinEdge(t, received.GetReferenceLineArtPng(), 256)
+	assertWithinEdge(t, received.GetDrawingPng(), 256)
+}
+
+// A service that reports nothing gets the image as it is. Guessing a size on
+// its behalf is what reporting exists to avoid, and there is no size limit to
+// fall foul of.
+func TestGenerateFeedback_SendsTheImageWholeWhenTheServiceDoesNotSay(t *testing.T) {
+	srv := &fakeInferenceServer{feedbackResult: &pb.FeedbackResult{OverallScore: 70}}
+	client := startTestServer(t, srv)
+
+	reference := photographPNG(t, 3000, 2000)
+	require.Greater(t, len(reference), 4*1024*1024)
+
+	_, err := client.GenerateFeedback(context.Background(), reference, []byte("drawing"), "line_work")
+	require.NoError(t, err)
+
+	srv.feedbackReceivedMu.Lock()
+	received := srv.feedbackReceivedReq
+	srv.feedbackReceivedMu.Unlock()
+	assert.Equal(t, reference, received.GetReferenceLineArtPng(), "sent as it is, and accepted")
+}
+
+// Configuration is settled when the service starts, so it is read once and
+// kept rather than asked for before every image.
+func TestClient_AsksTheServiceForItsConfigOnlyOnce(t *testing.T) {
+	srv := &fakeInferenceServer{
+		feedbackResult:  &pb.FeedbackResult{OverallScore: 70},
+		compareResponse: []byte("heatmap"),
+		maxImageEdge:    512,
+	}
+	client := startTestServer(t, srv)
+
+	_, err := client.GenerateFeedback(context.Background(), photographPNG(t, 900, 900), []byte("d"), "line_work")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&srv.getConfigCalls), "asked once, before the first image")
+
+	_, err = client.CompareImages(context.Background(), photographPNG(t, 900, 900), []byte("d"))
+	require.NoError(t, err)
+	_, err = client.Extract(photographPNG(t, 900, 900))
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&srv.getConfigCalls), "and kept")
+}
+
+// Asking what the service can use is a different question from asking whether
+// it is healthy, and polling for readiness must not answer it by accident.
+func TestWaitReady_DoesNotAskForConfig(t *testing.T) {
+	srv := &fakeInferenceServer{maxImageEdge: 512}
+	client := startTestServer(t, srv)
+
+	require.NoError(t, client.WaitReady(context.Background(), 2*time.Second))
+
+	assert.Zero(t, atomic.LoadInt32(&srv.getConfigCalls))
+	assert.Positive(t, atomic.LoadInt32(&srv.healthCheckCalls))
+}
+
+// A service that cannot answer leaves images alone, rather than failing the
+// request or guessing a size on its behalf.
+func TestClient_SendsImagesWholeWhenConfigCannotBeRead(t *testing.T) {
+	srv := &fakeInferenceServer{
+		extractResponse: []byte("line art"),
+		getConfigErr:    status.Error(codes.Unimplemented, "no such method"),
+		maxImageEdge:    512,
+	}
+	client := startTestServer(t, srv)
+
+	original := photographPNG(t, 2000, 2000)
+	lineArt, err := client.Extract(original)
+
+	require.NoError(t, err)
+	assert.Equal(t, []byte("line art"), lineArt)
+	srv.extractReceivedMu.Lock()
+	received := srv.extractReceived
+	srv.extractReceivedMu.Unlock()
+	assert.Equal(t, original, received, "sent as it is")
+}
+
+// photographPNG builds a PNG with enough variation that it does not compress
+// away to nothing, so the sizes in these tests are realistic.
+func photographPNG(t *testing.T, width int, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	seed := uint32(12345)
+	for i := 0; i < len(img.Pix); i++ {
+		seed = seed*1664525 + 1013904223
+		img.Pix[i] = uint8(seed >> 24)
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+func assertWithinEdge(t *testing.T, data []byte, maxEdge int) {
+	t.Helper()
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	require.NoError(t, err)
+	assert.LessOrEqual(t, decoded.Bounds().Dx(), maxEdge)
+	assert.LessOrEqual(t, decoded.Bounds().Dy(), maxEdge)
 }

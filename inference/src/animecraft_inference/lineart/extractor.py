@@ -30,6 +30,11 @@ from animecraft_inference.config import Config
 logger = logging.getLogger(__name__)
 
 
+# The size every input is resized to before the model sees it. Anything larger
+# is discarded here, which is why the service tells callers not to send it.
+INPUT_SIZE = 512
+
+
 class _Anime2SketchPrePostProcess(nn.Module):
     """Wraps the raw Anime2Sketch generator with pre/post-processing.
 
@@ -45,7 +50,9 @@ class _Anime2SketchPrePostProcess(nn.Module):
         self.inner = inner_model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(x, size=(512, 512), mode="bicubic", align_corners=False)
+        x = F.interpolate(
+            x, size=(INPUT_SIZE, INPUT_SIZE), mode="bicubic", align_corners=False
+        )
         x = (x - 0.5) / 0.5  # normalize to [-1, 1]
 
         out = self.inner(x)

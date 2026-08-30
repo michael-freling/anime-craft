@@ -29,6 +29,14 @@ from animecraft_inference.feedback.prompt import (
 logger = logging.getLogger(__name__)
 
 
+# Image token budget: each 28x28 patch is one token. MIN_PIXELS keeps small
+# images from being upscaled; MAX_PIXELS is the ceiling above which the
+# processor scales an image down, which is why the service tells callers not to
+# send more than that.
+MIN_PIXELS = 64 * 28 * 28
+MAX_PIXELS = 256 * 28 * 28
+
+
 @dataclass
 class FeedbackResult:
     """Parsed feedback from the VLM."""
@@ -147,8 +155,8 @@ class FeedbackGenerator:
         self._processor = AutoProcessor.from_pretrained(
             model_id,
             cache_dir=cache_dir,
-            min_pixels=64 * 28 * 28,
-            max_pixels=256 * 28 * 28,
+            min_pixels=MIN_PIXELS,
+            max_pixels=MAX_PIXELS,
         )
 
         dtype = torch.float16 if device == "cuda" else torch.float32
