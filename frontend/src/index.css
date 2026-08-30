@@ -1059,3 +1059,53 @@ body {
 .resume-actions-confirm .session-btn {
   min-width: 0;
 }
+
+/* Reference placement: beside the drawing, in a window of its own, or away */
+.session-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.session-panel-header .session-panel-title {
+  margin-bottom: 0;
+}
+.session-panel-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+/* When the reference is elsewhere the drawing takes the whole width, which is
+   the point of moving it; what is left is a way back. */
+.session-split-wide .session-drawing {
+  flex: 1;
+}
+.session-reference-away {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+/* The reference window is the image and nothing else: any chrome would take
+   back the room the window was opened to gain. */
+.reference-window {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  padding: 0.5rem;
+  background: #1b2636;
+}
+.reference-window .session-reference-img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+.reference-window .session-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

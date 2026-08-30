@@ -4,6 +4,7 @@ import { useDrawingCanvas } from "../hooks/useDrawingCanvas";
 import type { PendingSave } from "../hooks/useDrawingCanvas";
 import { useDrawingAutosave } from "../hooks/useDrawingAutosave";
 import { useDrawingShortcuts } from "../hooks/useDrawingShortcuts";
+import { useReferencePlacement } from "../hooks/useReferencePlacement";
 import { parseScene } from "../drawing/document";
 import { SessionProvider, useSession } from "../contexts/SessionContext";
 import DrawingCanvas from "../components/drawing/DrawingCanvas";
@@ -11,7 +12,7 @@ import ToolBar from "../components/drawing/ToolBar";
 import LayerPanel from "../components/drawing/LayerPanel";
 import SaveIndicator from "../components/drawing/SaveIndicator";
 import SessionControls from "../components/session/SessionControls";
-import ReferenceImageViewer from "../components/session/ReferenceImageViewer";
+import ReferencePanel from "../components/session/ReferencePanel";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import {
   ExportDrawingFile,
@@ -190,20 +191,21 @@ function SessionPageInner() {
   }, [id, autosave]);
 
   const referenceImageId = sessionState.referenceImageId;
+  const reference = useReferencePlacement(referenceImageId);
+  const referenceInPanel = reference.placement === "panel";
 
   return (
     <div className="session-page" data-testid="session-page">
-      <div className="session-split">
-        <div className="session-reference">
-          <h3 className="session-panel-title">Reference</h3>
-          {referenceImageId ? (
-            <ReferenceImageViewer referenceId={referenceImageId} />
-          ) : (
-            <div className="session-loading" data-testid="session-loading">
-              Loading session...
-            </div>
-          )}
-        </div>
+      <div
+        className={`session-split ${referenceInPanel ? "" : "session-split-wide"}`}
+      >
+        <ReferencePanel
+          referenceId={referenceImageId}
+          placement={reference.placement}
+          onPlacementChange={reference.setPlacement}
+          busy={reference.busy}
+          error={reference.error}
+        />
         <div className="session-drawing">
           <ToolBar
             state={drawingState}

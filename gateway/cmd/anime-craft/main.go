@@ -64,6 +64,7 @@ func main() {
 	}
 
 	logService := bff.NewLogService(dataDir)
+	referenceWindow := bff.NewReferenceWindowService(&referenceWindows{}, refRepo)
 
 	app := application.New(application.Options{
 		Name:        "anime-craft",
@@ -75,6 +76,7 @@ func main() {
 			application.NewService(bff.NewProgressService()),
 			application.NewService(bff.NewReferenceService(refRepo, dataDir)),
 			application.NewService(bff.NewSettingsService()),
+			application.NewService(referenceWindow),
 			application.NewService(logService),
 		},
 		Assets: application.AssetOptions{
