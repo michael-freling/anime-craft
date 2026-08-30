@@ -10,6 +10,7 @@ Run with: python -m animecraft_inference.server
 
 import argparse
 import logging
+import math
 import signal
 import sys
 import threading
@@ -21,9 +22,13 @@ import grpc
 
 from animecraft_inference.config import Config, load_config
 from animecraft_inference.feedback.generator import (
+    MAX_PIXELS as FEEDBACK_MAX_PIXELS,
+)
+from animecraft_inference.feedback.generator import (
     FeedbackGenerator,
     parse_feedback_json,
 )
+from animecraft_inference.lineart.extractor import INPUT_SIZE as LINEART_INPUT_SIZE
 from animecraft_inference.lineart.extractor import LineArtExtractor
 
 # Import generated protobuf stubs.
@@ -45,11 +50,21 @@ except ImportError:
 # choose how large an image has to be before the app fails rather than stopping
 # there being a larger one.
 #
-# The gateway shrinks images to what the models can actually look at before
-# sending them, so requests are small whatever was uploaded; this is here so
-# that the cases it cannot help with — a format it does not decode, and so
-# passes through whole — arrive rather than being rejected.
+# Callers are told what size is worth sending (see MAX_IMAGE_EDGE), so requests
+# are small whatever was uploaded; this is here so that the cases that cannot
+# help with — a format the caller does not decode, and so passes through whole
+# — arrive rather than being rejected.
 UNLIMITED_MESSAGE_BYTES = -1
+
+# The longest edge this service can make use of, reported to callers in the
+# health check so they can scale an image down before sending it.
+#
+# Derived from what the models actually do, rather than written out again here:
+# the line art model resizes everything to INPUT_SIZE square, and the feedback
+# model's processor scales anything over MAX_PIXELS down. Reconfiguring or
+# replacing either one moves this number with it, which is the point of
+# reporting it instead of letting callers hold their own copy.
+MAX_IMAGE_EDGE = max(LINEART_INPUT_SIZE, int(math.isqrt(FEEDBACK_MAX_PIXELS)))
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +235,7 @@ class InferenceServicer(inference_pb2_grpc.InferenceServiceServicer):
             line_art_ready=lineart_ready,
             feedback_ready=feedback_ready,
             status_message=status,
+            max_image_edge=MAX_IMAGE_EDGE,
         )
 
 

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/michael-freling/anime-craft/gateway/internal/inference/pb"
@@ -33,6 +34,12 @@ const unlimitedMessageBytes = math.MaxInt32
 type Client struct {
 	conn   *grpc.ClientConn
 	client pb.InferenceServiceClient
+
+	// maxImageEdge is what the service said it can make use of, learned from
+	// its health check rather than assumed here. Zero until it has said, in
+	// which case images are sent as they are.
+	maxImageEdgeMu sync.RWMutex
+	maxImageEdge   int
 }
 
 // New creates a new gRPC client connected to the inference service at addr.
@@ -61,8 +68,9 @@ func (c *Client) Close() error {
 // Extract implements bff.LineArtExtractor. It sends image data to the
 // Python inference service and returns the extracted line art PNG.
 func (c *Client) Extract(imageData []byte) ([]byte, error) {
-	resp, err := c.client.ExtractLineArt(context.Background(), &pb.ExtractLineArtRequest{
-		ImageData: shrinkForInference(imageData),
+	ctx := context.Background()
+	resp, err := c.client.ExtractLineArt(ctx, &pb.ExtractLineArtRequest{
+		ImageData: c.shrink(ctx, imageData),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("extract line art via gRPC: %w", err)
@@ -74,9 +82,10 @@ func (c *Client) Extract(imageData []byte) ([]byte, error) {
 // If the inference service returns UNAVAILABLE (model still loading), it
 // retries with exponential backoff up to 2 minutes.
 func (c *Client) GenerateFeedback(ctx context.Context, referenceLineArt []byte, drawingPNG []byte, exerciseMode string) (*pb.FeedbackResult, error) {
+	maxEdge := c.imageEdge(ctx)
 	req := &pb.GenerateFeedbackRequest{
-		ReferenceLineArtPng: shrinkForInference(referenceLineArt),
-		DrawingPng:          shrinkForInference(drawingPNG),
+		ReferenceLineArtPng: shrinkToEdge(referenceLineArt, maxEdge),
+		DrawingPng:          shrinkToEdge(drawingPNG, maxEdge),
 		ExerciseMode:        exerciseMode,
 	}
 
@@ -159,14 +168,63 @@ func (c *Client) doGenerateFeedback(ctx context.Context, req *pb.GenerateFeedbac
 // CompareImages sends both images to the inference service and returns
 // an SSIM heatmap PNG.
 func (c *Client) CompareImages(ctx context.Context, referenceLineArt []byte, drawingPNG []byte) ([]byte, error) {
+	maxEdge := c.imageEdge(ctx)
 	resp, err := c.client.CompareImages(ctx, &pb.CompareImagesRequest{
-		ReferenceLineArtPng: shrinkForInference(referenceLineArt),
-		DrawingPng:          shrinkForInference(drawingPNG),
+		ReferenceLineArtPng: shrinkToEdge(referenceLineArt, maxEdge),
+		DrawingPng:          shrinkToEdge(drawingPNG, maxEdge),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("compare images via gRPC: %w", err)
 	}
 	return resp.GetHeatmapPng(), nil
+}
+
+// shrink scales an image down to what the service says it can use.
+func (c *Client) shrink(ctx context.Context, imageData []byte) []byte {
+	return shrinkToEdge(imageData, c.imageEdge(ctx))
+}
+
+// imageEdge returns the longest edge the service can make use of, asking it
+// once and remembering the answer.
+//
+// A service that does not report one — an older build, or one that declines to
+// say — leaves this at zero, and images are sent as they are. Guessing a size
+// on its behalf is the thing this exists to avoid.
+func (c *Client) imageEdge(ctx context.Context) int {
+	c.maxImageEdgeMu.RLock()
+	known := c.maxImageEdge
+	c.maxImageEdgeMu.RUnlock()
+	if known > 0 {
+		return known
+	}
+
+	// A health check is cheap, and the answer is wanted before the first
+	// image goes out rather than after.
+	askCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	resp, err := c.client.HealthCheck(askCtx, &pb.HealthCheckRequest{})
+	if err != nil {
+		slog.Debug("could not ask the service what image size it can use", "error", err)
+		return 0
+	}
+	return c.rememberImageEdge(resp)
+}
+
+// rememberImageEdge keeps what a health check reported, so every health check
+// the client makes teaches it, not only the one asked on purpose.
+func (c *Client) rememberImageEdge(resp *pb.HealthCheckResponse) int {
+	edge := int(resp.GetMaxImageEdge())
+	if edge <= 0 {
+		return 0
+	}
+
+	c.maxImageEdgeMu.Lock()
+	defer c.maxImageEdgeMu.Unlock()
+	if c.maxImageEdge != edge {
+		slog.Info("inference service reported the image size it can use", "maxImageEdge", edge)
+		c.maxImageEdge = edge
+	}
+	return edge
 }
 
 // WaitReady polls HealthCheck until the service reports ready or the timeout
@@ -178,6 +236,11 @@ func (c *Client) WaitReady(ctx context.Context, timeout time.Duration) error {
 
 	for {
 		resp, err := c.client.HealthCheck(ctx, &pb.HealthCheckRequest{})
+		if err == nil {
+			// Every health check reports the image size it can use, so
+			// waiting for readiness is usually where that is learned.
+			c.rememberImageEdge(resp)
+		}
 		if err == nil && resp.GetLineArtReady() && resp.GetFeedbackReady() {
 			slog.Info("inference service is ready", "status", resp.GetStatusMessage())
 			return nil

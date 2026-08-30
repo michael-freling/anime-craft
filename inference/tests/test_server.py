@@ -1,9 +1,12 @@
 """Tests for the server entry point."""
 
+import math
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from animecraft_inference import server
 from animecraft_inference.config import Config
+from animecraft_inference.generated import inference_pb2
 
 
 def _config_passed_to_serve(argv: list[str]):
@@ -50,3 +53,27 @@ def test_the_server_places_no_limit_on_message_size():
     assert options["grpc.max_receive_message_length"] == -1
     assert options["grpc.max_send_message_length"] == -1
     assert server.UNLIMITED_MESSAGE_BYTES == -1
+
+
+def test_the_health_check_reports_the_image_size_the_models_can_use():
+    """A caller that hardcoded a size would be guessing about these models, and
+    would go on guessing the same number after one was reconfigured."""
+    loaded = SimpleNamespace(is_loaded=True)
+    servicer = server.InferenceServicer(loaded, loaded)
+    response = servicer.HealthCheck(inference_pb2.HealthCheckRequest(), None)
+
+    assert response.max_image_edge == server.MAX_IMAGE_EDGE
+    assert response.max_image_edge > 0
+
+
+def test_the_reported_size_follows_the_models():
+    """Derived from what the models do rather than written out again, so
+    reconfiguring or replacing one moves the reported number with it."""
+    assert server.MAX_IMAGE_EDGE == max(
+        server.LINEART_INPUT_SIZE, math.isqrt(server.FEEDBACK_MAX_PIXELS)
+    )
+    # As things stand: the line art model resizes to 512 square, and the
+    # feedback processor's budget works out at 448 square.
+    assert server.LINEART_INPUT_SIZE == 512
+    assert math.isqrt(server.FEEDBACK_MAX_PIXELS) == 448
+    assert server.MAX_IMAGE_EDGE == 512

@@ -11,56 +11,55 @@ import (
 	_ "image/jpeg" // likewise a photograph, which is the usual large upload
 )
 
-// Neither model looks at a large image. The line art extractor bicubic-resizes
-// whatever it is given to 512x512 (see inference/.../lineart/extractor.py), and
-// the feedback model's processor is capped at 256*28*28 pixels, around 448x448
-// (see .../feedback/generator.py). Sending a photograph at full resolution
-// therefore spends bandwidth, memory and time on pixels that are thrown away
-// before the model sees them — and it was what pushed a request past the size
-// limit in the first place.
+// Both models resize whatever they are given, so an image larger than they use
+// costs bandwidth, memory and time on pixels that are discarded before either
+// of them sees it — and that was what pushed a request past gRPC's old size
+// limit.
 //
-// Shrinking here rather than raising a ceiling is what actually keeps requests
-// small: a limit only decides how large an image has to be before it fails,
-// while this decides that none of them are large.
+// How large that is belongs to the service, not here. It reports the figure in
+// its health check (HealthCheckResponse.max_image_edge), derived from the
+// models themselves, so reconfiguring or replacing one moves the number with
+// it. A constant here would be a guess about somebody else's models, and would
+// go on being the same guess after they changed.
 //
-// The bound is generous on purpose — twice the larger of the two models' input
-// sizes — so it cannot cost quality that either model could have used.
-const maxImageEdge = 1024
+// Until the service has said, nothing is shrunk: sending an image whole is
+// wasteful, but guessing a size could throw away detail a model wanted.
 
-// shrinkForInference returns the image scaled down so neither edge is longer
-// than maxImageEdge, re-encoded as PNG.
+// shrinkToEdge returns the image scaled down so neither edge is longer than
+// maxEdge, re-encoded as PNG.
 //
-// Anything it cannot make sense of is returned untouched. A format Go does not
-// decode is not a reason to fail a request, and the service accepts whatever
-// arrives; the worst case is the large message this used to send every time.
-func shrinkForInference(imageData []byte) []byte {
-	if len(imageData) == 0 {
+// A maxEdge of zero means the service has not said what it can use, and the
+// image is returned untouched. So is anything that cannot be decoded: a format
+// Go does not read is not a reason to fail a request, and the service accepts
+// whatever arrives.
+func shrinkToEdge(imageData []byte, maxEdge int) []byte {
+	if len(imageData) == 0 || maxEdge <= 0 {
 		return imageData
 	}
 
 	src, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
-		slog.Debug("image left as it is for inference: could not decode it", "bytes", len(imageData), "error", err)
+		slog.Debug("image left as it is: could not decode it", "bytes", len(imageData), "error", err)
 		return imageData
 	}
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	if width <= maxImageEdge && height <= maxImageEdge {
+	if width <= maxEdge && height <= maxEdge {
 		return imageData
 	}
 
-	scale := math.Min(float64(maxImageEdge)/float64(width), float64(maxImageEdge)/float64(height))
+	scale := math.Min(float64(maxEdge)/float64(width), float64(maxEdge)/float64(height))
 	dst := boxDownscale(src, max(1, int(math.Round(float64(width)*scale))), max(1, int(math.Round(float64(height)*scale))))
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, dst); err != nil {
-		slog.Warn("image left as it is for inference: could not re-encode it", "error", err)
+		slog.Warn("image left as it is: could not re-encode it", "error", err)
 		return imageData
 	}
 
-	slog.Debug("shrank an image for inference",
-		"from", image.Pt(width, height), "to", dst.Bounds().Size(),
+	slog.Debug("shrank an image to what the service asked for",
+		"from", image.Pt(width, height), "to", dst.Bounds().Size(), "maxEdge", maxEdge,
 		"fromBytes", len(imageData), "toBytes", buf.Len())
 	return buf.Bytes()
 }
