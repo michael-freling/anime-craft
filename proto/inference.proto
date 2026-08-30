@@ -18,6 +18,12 @@ service InferenceService {
 
   // HealthCheck reports whether the service and its models are loaded.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // GetConfig reports what a caller needs to know to talk to this service
+  // well. Separate from HealthCheck because it answers a different question:
+  // health changes from moment to moment and is polled, while configuration
+  // is settled when the service starts and is read once.
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
 }
 
 message ExtractLineArtRequest {
@@ -67,4 +73,22 @@ message HealthCheckResponse {
   bool line_art_ready = 1;
   bool feedback_ready = 2;
   string status_message = 3;
+}
+
+message GetConfigRequest {}
+
+message GetConfigResponse {
+  // The longest edge, in pixels, that this service can make use of. Both
+  // models resize their input, so anything larger is discarded before either
+  // of them sees it — a caller that scales an image down to this first spends
+  // nothing sending pixels that will be thrown away.
+  //
+  // It is reported rather than left to the caller because only this service
+  // knows what its models do with an image; a caller that hardcoded a size
+  // would be guessing, and would go on guessing the same number after a model
+  // was reconfigured or replaced.
+  //
+  // Zero means the service is not saying, and the caller should send the image
+  // as it is.
+  int32 max_image_edge = 1;
 }
