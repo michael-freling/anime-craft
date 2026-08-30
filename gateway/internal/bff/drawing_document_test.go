@@ -789,3 +789,43 @@ func TestSessionService_ListResumableSessions_CarriesTheLastResult(t *testing.T)
 	assert.Equal(t, 81, resumable[0].LastScore)
 	assert.Equal(t, 2, resumable[0].ResultCount, "both attempts counted")
 }
+
+// A drawing carried on with moves into a new session, so its start has to come
+// from the first attempt. Taking it from the listed session would make a
+// drawing look newly begun on the day it was last picked up.
+func TestSessionService_ListResumableSessions_KeepsWhenTheDrawingWasStarted(t *testing.T) {
+	f := newDrawingFixture(t)
+
+	_, err := f.svc.SaveDrawingOperations(f.sessionID, saveRequest(0, 0, strokeOp("s1", 10, 10, 200, 200)))
+	require.NoError(t, err)
+
+	first, err := f.sessionSvc.GetSession(f.sessionID)
+	require.NoError(t, err)
+
+	listed, err := f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.WithinDuration(t, first.StartedAt, listed[0].DrawingStartedAt, time.Second)
+	assert.False(t, listed[0].LastSavedAt.IsZero())
+
+	// Two more attempts on the same drawing, each a new session.
+	_, err = f.sessionSvc.EndSession(f.sessionID)
+	require.NoError(t, err)
+	second, err := f.svc.ResumeDrawing(f.sessionID)
+	require.NoError(t, err)
+	_, err = f.svc.SaveDrawingOperations(second.ID, saveRequest(2, 2, strokeOp("s2", 5, 5, 6, 6)))
+	require.NoError(t, err)
+	_, err = f.sessionSvc.EndSession(second.ID)
+	require.NoError(t, err)
+	third, err := f.svc.ResumeDrawing(second.ID)
+	require.NoError(t, err)
+
+	listed, err = f.sessionSvc.ListResumableSessions(10)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, third.ID, listed[0].ID)
+	assert.WithinDuration(t, first.StartedAt, listed[0].DrawingStartedAt, time.Second,
+		"still the day the drawing was started, two attempts later")
+	assert.True(t, listed[0].LastSavedAt.After(first.StartedAt.Add(-time.Second)),
+		"and the last update is its own")
+}

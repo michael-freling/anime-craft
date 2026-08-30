@@ -11,10 +11,18 @@ interface ResumeSessionsProps {
   onViewResult: (sessionId: string) => void;
 }
 
-function formatWhen(value: unknown): string {
-  if (!value) return "recently";
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
   const date = new Date(value as string);
-  if (Number.isNaN(date.getTime())) return "recently";
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Recent times read better as an interval and older ones as a date, which is
+// also the split that matters here: a drawing touched this morning against one
+// begun last month.
+function formatWhen(value: unknown): string {
+  const date = toDate(value);
+  if (!date) return "recently";
 
   const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
   if (minutes < 1) return "just now";
@@ -22,6 +30,11 @@ function formatWhen(value: unknown): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} h ago`;
   return date.toLocaleDateString();
+}
+
+// The exact moment, for hovering over an interval that only says "3 h ago".
+function formatExact(value: unknown): string | undefined {
+  return toDate(value)?.toLocaleString();
 }
 
 /**
@@ -181,9 +194,22 @@ function ResumeSessions({ onOpen, onViewResult }: ResumeSessionsProps) {
                   {session.referenceTitle || "Untitled reference"}
                 </span>
                 <span className="resume-meta">
+                  <span
+                    data-testid={`resume-started-${session.id}`}
+                    title={formatExact(session.drawingStartedAt)}
+                  >
+                    started {formatWhen(session.drawingStartedAt)}
+                  </span>
+                  {" · "}
+                  <span
+                    data-testid={`resume-updated-${session.id}`}
+                    title={formatExact(session.lastSavedAt)}
+                  >
+                    updated {formatWhen(session.lastSavedAt)}
+                  </span>
+                  {" · "}
                   {session.operationCount} change
-                  {session.operationCount === 1 ? "" : "s"} · saved{" "}
-                  {formatWhen(session.lastSavedAt)}
+                  {session.operationCount === 1 ? "" : "s"}
                   {session.resultCount > 0 && (
                     <>
                       {" · "}

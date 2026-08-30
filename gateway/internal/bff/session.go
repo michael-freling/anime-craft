@@ -98,41 +98,46 @@ func (s *SessionService) ListResumableSessions(limit int) ([]model.ResumableSess
 		return nil, err
 	}
 	for i := range sessions {
-		s.attachLastResult(&sessions[i])
+		s.attachDrawingHistory(&sessions[i])
 	}
 	return sessions, nil
 }
 
-// attachLastResult finds the most recent graded attempt on a drawing so the
-// home screen can show what it scored and link to the feedback.
+// attachDrawingHistory walks back over the attempts made on a drawing, so the
+// home screen can say when the drawing was started and what it last scored.
 //
-// A drawing carried on with moves into a new session, so the attempt that was
-// graded is usually an earlier link in the chain rather than the session being
-// listed. Walking back is what makes a past result reachable at the moment it
-// is wanted — deciding whether to pick the drawing up again.
-func (s *SessionService) attachLastResult(session *model.ResumableSession) {
-	if s.feedbackRepo == nil {
-		return
-	}
-
+// A drawing carried on with moves into a new session, so both answers usually
+// belong to an earlier link in the chain than the session being listed. Left
+// unwalked, a drawing would appear to have been started on the day it was last
+// picked up, and the result worth reading before picking it up again would be
+// out of reach.
+func (s *SessionService) attachDrawingHistory(session *model.ResumableSession) {
 	// A chain is a handful of attempts; the bound is only there so a cycle
 	// cannot spin.
 	const maxChain = 50
-	for id, steps := session.ID, 0; id != "" && steps < maxChain; steps++ {
-		if feedback, err := s.feedbackRepo.GetBySessionID(id); err == nil && (feedback.OverallScore > 0 || feedback.Summary != "") {
-			if session.LastResultSessionID == "" {
-				session.LastResultSessionID = id
-				session.LastScore = feedback.OverallScore
+	for id, steps := session.ID, 0; steps < maxChain; steps++ {
+		if s.feedbackRepo != nil {
+			if feedback, err := s.feedbackRepo.GetBySessionID(id); err == nil && (feedback.OverallScore > 0 || feedback.Summary != "") {
+				if session.LastResultSessionID == "" {
+					session.LastResultSessionID = id
+					session.LastScore = feedback.OverallScore
+				}
+				session.ResultCount++
 			}
-			session.ResultCount++
 		}
 
-		previous, err := s.repo.PreviousInChain(id)
+		previous, found, err := s.repo.PreviousInChain(id)
 		if err != nil {
 			slog.Error("failed to walk back the drawing's attempts", "method", "ListResumableSessions", "sessionID", id, "error", err)
 			return
 		}
-		id = previous
+		if !found {
+			return
+		}
+		// Walking strictly backwards, so the last one reached is the first
+		// attempt, and its start is when the drawing was started.
+		session.DrawingStartedAt = previous.StartedAt
+		id = previous.ID
 	}
 }
 

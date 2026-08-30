@@ -54,14 +54,18 @@ type DrawingSaveResult struct {
 // recognise it and pick it back up. Finished sessions are listed too — a
 // submitted drawing is still a drawing the artist may want to carry on with.
 type ResumableSession struct {
-	ID               string    `json:"id"`
-	ReferenceImageID string    `json:"referenceImageId"`
-	ReferenceTitle   string    `json:"referenceTitle"`
-	ExerciseMode     string    `json:"exerciseMode"`
-	Status           string    `json:"status"`
-	StartedAt        time.Time `json:"startedAt"`
-	LastSavedAt      time.Time `json:"lastSavedAt"`
-	OperationCount   int       `json:"operationCount"`
+	ID               string `json:"id"`
+	ReferenceImageID string `json:"referenceImageId"`
+	ReferenceTitle   string `json:"referenceTitle"`
+	ExerciseMode     string `json:"exerciseMode"`
+	Status           string `json:"status"`
+	// DrawingStartedAt is when the drawing was first started, which is the
+	// first attempt in its chain rather than the session being listed —
+	// carrying a drawing on must not make it look newly begun.
+	DrawingStartedAt time.Time `json:"drawingStartedAt"`
+	// LastSavedAt is when autosave last wrote to it.
+	LastSavedAt    time.Time `json:"lastSavedAt"`
+	OperationCount int       `json:"operationCount"`
 	// The last graded attempt on this drawing, which may be an earlier
 	// session that handed the drawing on. Empty when nothing has been
 	// submitted yet.

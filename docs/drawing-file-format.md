@@ -133,9 +133,14 @@ shown rather than swallowed, and retried — the work is still in the editor.
 
 - The session shows what has been written: *Saving…*, *Saved 14:05*, or
   *Not saved — retrying*.
-- The home screen lists saved drawings under **Your drawings**, with what was
-  saved and when. Submitted drawings are listed alongside unfinished ones:
-  finishing a session must not be the moment a drawing becomes unreachable.
+- The home screen lists saved drawings under **Your drawings**, with when each
+  was started, when it was last updated, and what it last scored. Submitted
+  drawings are listed alongside unfinished ones: finishing a session must not
+  be the moment a drawing becomes unreachable.
+
+  The start date comes from the first attempt in the drawing's chain, not the
+  session being listed — carrying a drawing on must not make it look newly
+  begun.
 - **Save a copy…** writes a `.ora` anywhere; **Open a saved drawing…** turns
   one back into a session, restoring its reference image if this machine does
   not already have it.

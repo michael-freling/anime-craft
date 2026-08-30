@@ -986,7 +986,9 @@ body {
 .resume-meta {
   font-size: 0.8rem;
   color: #8fa3c8;
-  white-space: nowrap;
+  /* Enough detail now that it may not fit on one line in a narrow window;
+     wrapping keeps it readable, and the grid columns stay in line either way. */
+  line-height: 1.4;
 }
 .resume-actions {
   display: flex;

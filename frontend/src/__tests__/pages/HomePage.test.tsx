@@ -182,7 +182,7 @@ describe('HomePage', () => {
       referenceTitle: 'Simple Face',
       exerciseMode: 'line_work',
       status: 'in_progress',
-      startedAt: new Date().toISOString(),
+      drawingStartedAt: new Date().toISOString(),
       lastSavedAt: new Date().toISOString(),
       operationCount: 12,
       lastResultSessionId: '',
@@ -466,5 +466,64 @@ describe('HomePage', () => {
     });
     expect(screen.queryByTestId('resume-result-session-042')).not.toBeInTheDocument();
     expect(screen.queryByTestId('resume-score-session-042')).not.toBeInTheDocument();
+  });
+
+  // Two different questions: how long the artist has had this drawing, and
+  // whether they have touched it lately.
+  it('shows when a drawing was started and when it was last updated', async () => {
+    const started = new Date('2026-03-02T09:30:00Z');
+    const updated = new Date(Date.now() - 5 * 60 * 1000);
+    mockListResumableSessions.mockResolvedValue([
+      savedDrawing({
+        drawingStartedAt: started.toISOString(),
+        lastSavedAt: updated.toISOString(),
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-item-session-042')).toBeInTheDocument();
+    });
+
+    // Older than a day, so a date rather than an interval.
+    expect(screen.getByTestId('resume-started-session-042')).toHaveTextContent(
+      `started ${started.toLocaleDateString()}`
+    );
+    expect(screen.getByTestId('resume-updated-session-042')).toHaveTextContent(
+      'updated 5 min ago'
+    );
+    // The exact moment is a hover away, since an interval alone is vague.
+    expect(screen.getByTestId('resume-started-session-042')).toHaveAttribute(
+      'title',
+      started.toLocaleString()
+    );
+  });
+
+  it('reads naturally for a drawing started moments ago', async () => {
+    const now = new Date();
+    mockListResumableSessions.mockResolvedValue([
+      savedDrawing({
+        drawingStartedAt: now.toISOString(),
+        lastSavedAt: now.toISOString(),
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resume-started-session-042')).toHaveTextContent(
+        'started just now'
+      );
+    });
+    expect(screen.getByTestId('resume-updated-session-042')).toHaveTextContent(
+      'updated just now'
+    );
   });
 });

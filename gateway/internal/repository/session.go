@@ -102,7 +102,7 @@ func (r *SessionRepository) ListResumable(limit int) ([]model.ResumableSession, 
 	sessions := []model.ResumableSession{}
 	for rows.Next() {
 		var s model.ResumableSession
-		if err := rows.Scan(&s.ID, &s.ReferenceImageID, &s.ReferenceTitle, &s.ExerciseMode, &s.Status, &s.StartedAt, &s.LastSavedAt, &s.OperationCount); err != nil {
+		if err := rows.Scan(&s.ID, &s.ReferenceImageID, &s.ReferenceTitle, &s.ExerciseMode, &s.Status, &s.DrawingStartedAt, &s.LastSavedAt, &s.OperationCount); err != nil {
 			return nil, fmt.Errorf("scan resumable session: %w", err)
 		}
 		sessions = append(sessions, s)
@@ -139,18 +139,20 @@ func (r *SessionRepository) ContinuedBy(sessionID string) (string, error) {
 	return next.String, nil
 }
 
-// PreviousInChain returns the session that handed its drawing to this one, or
-// an empty string when this is where the drawing started.
-func (r *SessionRepository) PreviousInChain(sessionID string) (string, error) {
-	var previous string
-	err := r.db.QueryRow(
-		"SELECT id FROM sessions WHERE continued_by_session_id = ?", sessionID,
-	).Scan(&previous)
+// PreviousInChain returns the session that handed its drawing to this one.
+// found is false when this is where the drawing started.
+func (r *SessionRepository) PreviousInChain(sessionID string) (session model.Session, found bool, err error) {
+	var s model.Session
+	err = r.db.QueryRow(
+		`SELECT id, reference_image_id, exercise_mode, status, started_at, ended_at, duration_seconds
+		 FROM sessions WHERE continued_by_session_id = ?`,
+		sessionID,
+	).Scan(&s.ID, &s.ReferenceImageID, &s.ExerciseMode, &s.Status, &s.StartedAt, &s.EndedAt, &s.DurationSeconds)
 	if err == sql.ErrNoRows {
-		return "", nil
+		return model.Session{}, false, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("get previous session in chain: %w", err)
+		return model.Session{}, false, fmt.Errorf("get previous session in chain: %w", err)
 	}
-	return previous, nil
+	return s, true, nil
 }
