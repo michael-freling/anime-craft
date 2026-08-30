@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
-import ReferencePanel from '../../components/session/ReferencePanel';
+import ReferencePanel, {
+  ReferenceAwayControl,
+} from '../../components/session/ReferencePanel';
 
 vi.mock('../../components/session/ReferenceImageViewer', () => ({
   default: ({ referenceId }: { referenceId: string }) => (
@@ -11,7 +13,7 @@ vi.mock('../../components/session/ReferenceImageViewer', () => ({
 
 function renderPanel(overrides: Partial<Parameters<typeof ReferencePanel>[0]> = {}) {
   const onPlacementChange = vi.fn();
-  render(
+  const view = render(
     <ReferencePanel
       referenceId="ref-001"
       placement="panel"
@@ -21,7 +23,7 @@ function renderPanel(overrides: Partial<Parameters<typeof ReferencePanel>[0]> = 
       {...overrides}
     />
   );
-  return { onPlacementChange };
+  return { onPlacementChange, container: view.container };
 }
 
 describe('ReferencePanel', () => {
@@ -53,25 +55,19 @@ describe('ReferencePanel', () => {
     expect(onPlacementChange).toHaveBeenCalledWith('hidden');
   });
 
-  // Whichever way it went, there has to be a way back, and it should say where
-  // the reference actually is.
-  it('says where the reference went and brings it back', async () => {
-    const user = userEvent.setup();
-    const { onPlacementChange } = renderPanel({ placement: 'window' });
+  // The whole point of moving the reference is the room it frees, so the panel
+  // leaves nothing behind — not even a panel saying it is empty.
+  it('takes up no room at all once the reference is elsewhere', () => {
+    const { container } = renderPanel({ placement: 'window' });
 
     expect(screen.queryByTestId('reference-panel')).not.toBeInTheDocument();
-    expect(screen.getByTestId('reference-away')).toHaveTextContent(
-      'Reference in its own window'
-    );
-
-    await user.click(screen.getByTestId('reference-show-here'));
-    expect(onPlacementChange).toHaveBeenCalledWith('panel');
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('says so when the reference is merely hidden', () => {
-    renderPanel({ placement: 'hidden' });
+  it('leaves nothing behind when the reference is merely hidden', () => {
+    const { container } = renderPanel({ placement: 'hidden' });
 
-    expect(screen.getByTestId('reference-away')).toHaveTextContent('Reference hidden');
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('reports a placement that would not take', () => {
@@ -93,5 +89,68 @@ describe('ReferencePanel', () => {
 
     expect(screen.getByTestId('reference-open-window')).toBeDisabled();
     expect(screen.getByTestId('reference-hide')).toBeDisabled();
+  });
+});
+
+describe('ReferenceAwayControl', () => {
+  function renderAway(
+    overrides: Partial<Parameters<typeof ReferenceAwayControl>[0]> = {}
+  ) {
+    const onShowHere = vi.fn();
+    render(
+      <ReferenceAwayControl
+        placement="window"
+        onShowHere={onShowHere}
+        busy={false}
+        error={null}
+        {...overrides}
+      />
+    );
+    return { onShowHere };
+  }
+
+  it('brings the reference back', async () => {
+    const user = userEvent.setup();
+    const { onShowHere } = renderAway();
+
+    await user.click(screen.getByTestId('reference-show-here'));
+
+    expect(onShowHere).toHaveBeenCalled();
+  });
+
+  // Where it went belongs in the tooltip: the label has to stay short, because
+  // a long one starts taking back the room the reference gave up.
+  it('says where the reference went without spending width on it', () => {
+    renderAway({ placement: 'window' });
+
+    const button = screen.getByTestId('reference-show-here');
+    expect(button).toHaveTextContent('Show reference');
+    expect(button).toHaveAttribute(
+      'title',
+      'The reference is in its own window \u2014 put it back beside the drawing'
+    );
+  });
+
+  it('says so when the reference is merely hidden', () => {
+    renderAway({ placement: 'hidden' });
+
+    expect(screen.getByTestId('reference-show-here')).toHaveAttribute(
+      'title',
+      'The reference is hidden \u2014 put it back beside the drawing'
+    );
+  });
+
+  it('reports a placement that would not take', () => {
+    renderAway({ error: 'no display' });
+
+    expect(screen.getByTestId('reference-placement-error')).toHaveTextContent(
+      'no display'
+    );
+  });
+
+  it('waits while a placement is in flight', () => {
+    renderAway({ busy: true });
+
+    expect(screen.getByTestId('reference-show-here')).toBeDisabled();
   });
 });

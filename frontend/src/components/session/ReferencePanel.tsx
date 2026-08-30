@@ -18,6 +18,10 @@ interface ReferencePanelProps {
  * decision — where the reference should be — and only one answer can hold at a
  * time. A window suits a second screen; hiding suits a single one, where a
  * floating window would cover the drawing it made room for.
+ *
+ * Once the reference is elsewhere this renders nothing at all: a panel saying
+ * the panel is empty would keep the very room it was asked to give up. The way
+ * back is ReferenceAwayControl, which rides along in the toolbar.
  */
 function ReferencePanel({
   referenceId,
@@ -26,27 +30,7 @@ function ReferencePanel({
   busy,
   error,
 }: ReferencePanelProps) {
-  if (placement !== "panel") {
-    const away = placement === "window" ? "in its own window" : "hidden";
-    return (
-      <div className="session-reference-away" data-testid="reference-away">
-        <button
-          className="toolbar-btn"
-          onClick={() => onPlacementChange("panel")}
-          disabled={busy}
-          data-testid="reference-show-here"
-          title="Put the reference back beside the drawing"
-        >
-          Reference {away} — show it here
-        </button>
-        {error && (
-          <p className="home-error" data-testid="reference-placement-error">
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
+  if (placement !== "panel") return null;
 
   return (
     <div className="session-reference" data-testid="reference-panel">
@@ -91,4 +75,55 @@ function ReferencePanel({
   );
 }
 
+interface ReferenceAwayControlProps {
+  placement: ReferencePlacement;
+  onShowHere: () => void;
+  busy: boolean;
+  error: string | null;
+}
+
+/**
+ * The way back, for when the reference is elsewhere.
+ *
+ * It belongs in a row that already exists — the toolbar — so that giving the
+ * reference away really does give the drawing the space, rather than trading a
+ * panel for a slightly smaller panel. Where the reference went is in the
+ * tooltip rather than the label: the button does the same thing either way,
+ * and a longer label would start eating the room again.
+ */
+function ReferenceAwayControl({
+  placement,
+  onShowHere,
+  busy,
+  error,
+}: ReferenceAwayControlProps) {
+  const where =
+    placement === "window"
+      ? "The reference is in its own window"
+      : "The reference is hidden";
+
+  return (
+    <div className="reference-away" data-testid="reference-away">
+      {error && (
+        <span
+          className="reference-away-error"
+          data-testid="reference-placement-error"
+        >
+          {error}
+        </span>
+      )}
+      <button
+        className="toolbar-btn"
+        onClick={onShowHere}
+        disabled={busy}
+        data-testid="reference-show-here"
+        title={`${where} — put it back beside the drawing`}
+      >
+        Show reference
+      </button>
+    </div>
+  );
+}
+
+export { ReferenceAwayControl };
 export default ReferencePanel;

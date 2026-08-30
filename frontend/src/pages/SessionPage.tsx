@@ -12,7 +12,9 @@ import ToolBar from "../components/drawing/ToolBar";
 import LayerPanel from "../components/drawing/LayerPanel";
 import SaveIndicator from "../components/drawing/SaveIndicator";
 import SessionControls from "../components/session/SessionControls";
-import ReferencePanel from "../components/session/ReferencePanel";
+import ReferencePanel, {
+  ReferenceAwayControl,
+} from "../components/session/ReferencePanel";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import {
   ExportDrawingFile,
@@ -196,9 +198,7 @@ function SessionPageInner() {
 
   return (
     <div className="session-page" data-testid="session-page">
-      <div
-        className={`session-split ${referenceInPanel ? "" : "session-split-wide"}`}
-      >
+      <div className="session-split">
         <ReferencePanel
           referenceId={referenceImageId}
           placement={reference.placement}
@@ -214,6 +214,16 @@ function SessionPageInner() {
             onSetBrushColor={setBrushColor}
             onUndo={undo}
             onRedo={redo}
+            trailing={
+              referenceInPanel ? null : (
+                <ReferenceAwayControl
+                  placement={reference.placement}
+                  onShowHere={() => reference.setPlacement("panel")}
+                  busy={reference.busy}
+                  error={reference.error}
+                />
+              )
+            }
           />
           <div className="canvas-with-layers">
             <DrawingCanvas

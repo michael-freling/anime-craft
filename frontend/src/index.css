@@ -309,13 +309,35 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.session-reference-img {
+/* The frame the reference is looked at through: it clips, the image inside it
+   moves. */
+.reference-viewer {
+  position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  object-fit: contain;
-  width: 100%;
+  overflow: hidden;
   border-radius: 8px;
   background: #16213e;
+  /* Dragging has to pan the reference, not scroll whatever is behind it. */
+  touch-action: none;
+  outline: none;
+}
+.reference-viewer[data-zoomed="true"] {
+  cursor: grab;
+}
+.reference-viewer[data-zoomed="true"]:active {
+  cursor: grabbing;
+}
+
+.session-reference-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .reference-placeholder {
@@ -1075,17 +1097,22 @@ body {
   display: flex;
   gap: 0.35rem;
 }
-/* When the reference is elsewhere the drawing takes the whole width, which is
-   the point of moving it; what is left is a way back. */
-.session-split-wide .session-drawing {
-  flex: 1;
-}
-.session-reference-away {
+/* With the reference elsewhere the panel renders nothing and the drawing has
+   the row to itself. The way back rides at the far end of the toolbar, which
+   is a row that exists regardless. */
+.toolbar-trailing {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  flex-shrink: 0;
-  align-self: flex-start;
+  align-items: center;
+  margin-left: auto;
+}
+.reference-away {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.reference-away-error {
+  font-size: 0.75rem;
+  color: #ff6b6b;
 }
 
 /* The reference window is the image and nothing else: any chrome would take
@@ -1097,15 +1124,63 @@ body {
   padding: 0.5rem;
   background: #1b2636;
 }
-.reference-window .session-reference-img {
+.reference-window .reference-viewer {
   flex: 1;
-  min-height: 0;
-  width: 100%;
-  object-fit: contain;
 }
 .reference-window .session-loading {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Floating over the reference rather than beside it: controls that took space
+   from the image would undo what moving the reference was for. */
+.reference-zoom {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(160, 160, 184, 0.25);
+  opacity: 0.5;
+  transition: opacity 120ms ease;
+}
+.reference-viewer:hover .reference-zoom,
+.reference-viewer:focus-within .reference-zoom,
+.reference-viewer[data-zoomed="true"] .reference-zoom {
+  opacity: 1;
+}
+.reference-zoom-btn {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.25rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #e6e6f0;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.reference-zoom-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+.reference-zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.reference-zoom-fit {
+  font-size: 0.7rem;
+}
+.reference-zoom-level {
+  min-width: 2.7rem;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #a0a0b8;
+  font-variant-numeric: tabular-nums;
 }
