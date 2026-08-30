@@ -127,7 +127,16 @@ jobs:
             # tar, so the executable bit survives the download.
             tar -czf "dist/$name.tar.gz" -C bin "${{ matrix.binary }}"
           fi
+
+          # What the archive holds, in the log: an empty or mis-packed one
+          # otherwise looks exactly like a good one from the outside.
           ls -l dist
+          file "bin/${{ matrix.binary }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            unzip -l "dist/$name.zip"
+          else
+            tar -tzvf "dist/$name.tar.gz"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
