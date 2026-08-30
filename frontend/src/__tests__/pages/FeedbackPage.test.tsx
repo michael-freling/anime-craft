@@ -8,6 +8,7 @@ const mockRequestFeedback = vi.fn();
 const mockGetSession = vi.fn();
 const mockGetReferenceImageData = vi.fn();
 const mockGetDrawingImageData = vi.fn();
+const mockResumeDrawing = vi.fn();
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js', () => ({
   RequestFeedback: (...args: any[]) => mockRequestFeedback(...args),
@@ -23,6 +24,7 @@ vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/intern
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js', () => ({
   GetDrawingImageData: (...args: any[]) => mockGetDrawingImageData(...args),
+  ResumeDrawing: (...args: any[]) => mockResumeDrawing(...args),
 }));
 
 vi.mock('../../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/logservice.js', () => ({
@@ -217,5 +219,50 @@ describe('FeedbackPage', () => {
     const lineArtImg = screen.getByTestId('comparison-lineart') as HTMLImageElement;
     expect(lineArtImg.src).toContain('data:image/png;base64,');
     expect(screen.getByText('Reference Line Art')).toBeInTheDocument();
+  });
+
+  // Feedback is most useful with the drawing still in front of you, so
+  // carrying on from it is offered right here rather than only from home.
+  it('carries on from the drawing in a new session', async () => {
+    mockResumeDrawing.mockResolvedValue({ id: 'session-099' });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/session/session-001/feedback']}>
+        <Routes>
+          <Route path="/session/:id/feedback" element={<FeedbackPage />} />
+          <Route path="/session/:id" element={<div data-testid="session-page">Session Page</div>} />
+          <Route path="/" element={<div>Home Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('keep-drawing-btn')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('keep-drawing-btn'));
+
+    expect(mockResumeDrawing).toHaveBeenCalledWith('session-001');
+    await waitFor(() => {
+      expect(screen.getByTestId('session-page')).toBeInTheDocument();
+    });
+  });
+
+  it('says so when the drawing cannot be carried on with', async () => {
+    mockResumeDrawing.mockRejectedValue(new Error('load saved drawing: not found'));
+    const user = userEvent.setup();
+    renderFeedbackPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('keep-drawing-btn')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('keep-drawing-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-resume-error')).toHaveTextContent(
+        'load saved drawing: not found'
+      );
+    });
+    // Still offers a way onward.
+    expect(screen.getByTestId('new-session-btn')).toBeInTheDocument();
   });
 });

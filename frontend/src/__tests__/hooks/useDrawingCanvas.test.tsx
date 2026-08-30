@@ -230,3 +230,248 @@ describe('useDrawingCanvas undo of layer changes', () => {
     ]);
   });
 });
+
+describe('useDrawingCanvas saving', () => {
+  it('has nothing to save before anything is drawn', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    expect(result.current.takePendingSave()).toBeNull();
+  });
+
+  it('offers each change to autosave once', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.addLayer());
+    const first = result.current.takePendingSave()!;
+    expect(first.fromIndex).toBe(0);
+    expect(first.cursor).toBe(0);
+    expect(first.operations).toEqual([
+      { type: 'add_layer', layer: { id: 'layer-2', name: 'Layer 2', visible: true } },
+    ]);
+
+    act(() => result.current.commitSave(first));
+    expect(result.current.takePendingSave()).toBeNull();
+
+    // The next change is offered on its own, not with the one already saved.
+    act(() => result.current.toggleLayerVisibility('layer-1'));
+    const second = result.current.takePendingSave()!;
+    expect(second.fromIndex).toBe(1);
+    expect(second.operations).toEqual([
+      { type: 'set_layer_visible', layerId: 'layer-1', visible: false },
+    ]);
+  });
+
+  // Undo does not delete anything: it moves the cursor, and the redo stack is
+  // saved with it so undo survives closing the app.
+  it('saves an undo as a cursor move, keeping the redo stack', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.addLayer());
+    act(() => result.current.commitSave(result.current.takePendingSave()!));
+
+    act(() => result.current.undo());
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.operations).toEqual([]);
+    expect(pending.cursor).toBe(-1);
+    expect(pending.fromIndex).toBe(1);
+  });
+
+  // Drawing after an undo throws the redo stack away, so the saved log has to
+  // be rewritten from that point rather than appended to.
+  it('replaces the tail of the log when the artist draws after an undo', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.addLayer()); // layer-2
+    act(() => result.current.addLayer()); // layer-3
+    act(() => result.current.commitSave(result.current.takePendingSave()!));
+
+    act(() => result.current.undo());
+    act(() => result.current.toggleLayerVisibility('layer-1'));
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.fromIndex).toBe(1);
+    expect(pending.operations).toEqual([
+      { type: 'set_layer_visible', layerId: 'layer-1', visible: false },
+    ]);
+    expect(pending.cursor).toBe(1);
+  });
+
+  it('carries the tool and the selected layer along with the drawing', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.setBrushColor('#2196f3'));
+    act(() => result.current.setBrushSize(10));
+    act(() => result.current.setTool('eraser'));
+    act(() => result.current.addLayer());
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.tool).toEqual({
+      tool: 'eraser',
+      brushSize: 10,
+      brushColor: '#2196f3',
+    });
+    expect(pending.activeLayerId).toBe('layer-2');
+    expect(pending.document).toEqual({ width: 1024, height: 768 });
+  });
+});
+
+describe('useDrawingCanvas restoring a saved drawing', () => {
+  const savedScene = {
+    version: 1,
+    document: { width: 1024, height: 768 },
+    activeLayerId: 'layer-2',
+    cursor: 2,
+    tool: { tool: 'eraser' as const, brushSize: 10, brushColor: '#f44336' },
+    operations: [
+      {
+        type: 'add_stroke' as const,
+        stroke: {
+          id: 's1',
+          layerId: 'layer-1',
+          tool: 'brush' as const,
+          color: '#000000',
+          size: 2,
+          points: [10, 10, 100, 100],
+        },
+      },
+      {
+        type: 'add_layer' as const,
+        layer: { id: 'layer-2', name: 'Layer 2', visible: true },
+      },
+      {
+        type: 'add_layer' as const,
+        layer: { id: 'layer-3', name: 'Layer 3', visible: true },
+      },
+    ],
+  };
+
+  it('puts back the layers, the tool and the selection', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.hydrate({ ...savedScene, cursor: 1 }));
+
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+    expect(result.current.state.activeLayerId).toBe('layer-2');
+    expect(result.current.state.tool).toBe('eraser');
+    expect(result.current.state.brushSize).toBe(10);
+    expect(result.current.state.brushColor).toBe('#f44336');
+  });
+
+  it('puts back the undo history, redo stack included', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    // Saved mid-undo: layer-3 is not on screen but can still be redone.
+    act(() => result.current.hydrate({ ...savedScene, cursor: 1 }));
+    expect(result.current.state.canUndo).toBe(true);
+    expect(result.current.state.canRedo).toBe(true);
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+
+    act(() => result.current.redo());
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+      'layer-3',
+    ]);
+  });
+
+  it('owes the store nothing straight after restoring', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.hydrate(savedScene));
+
+    expect(result.current.takePendingSave()).toBeNull();
+  });
+
+  it('appends to the restored log rather than starting over', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.hydrate(savedScene));
+
+    act(() => result.current.addLayer());
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.fromIndex).toBe(3);
+    expect(pending.operations).toHaveLength(1);
+    // Numbering continues past the layers the saved drawing already used.
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+      'layer-3',
+      'layer-4',
+    ]);
+  });
+});
+
+describe('useDrawingCanvas starting from an inherited drawing', () => {
+  // A drawing carried over from a finished attempt is the starting point,
+  // not history: undoing into it would dismantle work done elsewhere.
+  const inherited = {
+    version: 1,
+    document: { width: 1024, height: 768 },
+    activeLayerId: 'layer-1',
+    cursor: 1,
+    baseIndex: 2,
+    operations: [
+      {
+        type: 'add_stroke' as const,
+        stroke: { id: 'a', layerId: 'layer-1', tool: 'brush' as const, color: '#000', size: 2, points: [1, 1, 2, 2] },
+      },
+      {
+        type: 'add_layer' as const,
+        layer: { id: 'layer-2', name: 'Layer 2', visible: true },
+      },
+    ],
+  };
+
+  it('opens with the drawing on the canvas and nothing to undo', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+
+    act(() => result.current.hydrate(inherited));
+
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+    expect(result.current.state.canUndo).toBe(false);
+    expect(result.current.state.canRedo).toBe(false);
+  });
+
+  it('undoes only what the artist does from here', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.hydrate(inherited));
+
+    act(() => result.current.addLayer());
+    expect(result.current.state.canUndo).toBe(true);
+
+    act(() => result.current.undo());
+    expect(result.current.state.canUndo).toBe(false);
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+
+    // Undoing again cannot eat into the inherited drawing.
+    act(() => result.current.undo());
+    expect(result.current.state.layers.map((l) => l.id)).toEqual([
+      'layer-1',
+      'layer-2',
+    ]);
+  });
+
+  it('never offers the store a save that would rewrite the inherited part', () => {
+    const { result } = renderHook(() => useDrawingCanvas());
+    act(() => result.current.hydrate(inherited));
+
+    act(() => result.current.addLayer());
+    act(() => result.current.undo());
+    act(() => result.current.toggleLayerVisibility('layer-1'));
+
+    const pending = result.current.takePendingSave()!;
+    expect(pending.fromIndex).toBeGreaterThanOrEqual(2);
+    expect(pending.cursor).toBeGreaterThanOrEqual(1);
+  });
+});

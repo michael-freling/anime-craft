@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReferenceImagePicker from "../components/session/ReferenceImagePicker";
+import ResumeSessions from "../components/session/ResumeSessions";
 import { StartSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
+import { ImportDrawingFile } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
 
 const EXERCISE_MODE = "line_work";
 
@@ -9,6 +11,7 @@ function HomePage() {
   const navigate = useNavigate();
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleStart = async () => {
@@ -24,9 +27,35 @@ function HomePage() {
     }
   };
 
+  // A saved .ora carries its own reference image, so a drawing from another
+  // machine opens as a session that can be drawn on straight away.
+  const handleOpenFile = async () => {
+    setError(null);
+    try {
+      const { Dialogs } = await import("@wailsio/runtime");
+      const filePath = await Dialogs.OpenFile({
+        Title: "Open a saved drawing",
+        Filters: [{ DisplayName: "OpenRaster drawing", Pattern: "*.ora" }],
+      });
+      if (!filePath || typeof filePath !== "string") return;
+
+      setIsOpening(true);
+      const session = await ImportDrawingFile(filePath);
+      navigate(`/session/${session.id}`);
+    } catch (e) {
+      console.error("HomePage: could not open the drawing:", e);
+      setError(e instanceof Error ? e.message : "Failed to open the drawing");
+      setIsOpening(false);
+    }
+  };
+
   return (
     <div className="home-page" data-testid="home-page">
       <h1>Anime Craft</h1>
+      <ResumeSessions
+        onOpen={(sessionId) => navigate(`/session/${sessionId}`)}
+        onViewResult={(sessionId) => navigate(`/session/${sessionId}/feedback`)}
+      />
       <ReferenceImagePicker
         selectedRef={selectedRef}
         onSelectRef={setSelectedRef}
@@ -36,14 +65,24 @@ function HomePage() {
           {error}
         </div>
       )}
-      <button
-        className="start-session-btn"
-        data-testid="start-session-btn"
-        disabled={!selectedRef || isStarting}
-        onClick={handleStart}
-      >
-        {isStarting ? "Starting..." : "Start Session"}
-      </button>
+      <div className="home-actions">
+        <button
+          className="start-session-btn"
+          data-testid="start-session-btn"
+          disabled={!selectedRef || isStarting}
+          onClick={handleStart}
+        >
+          {isStarting ? "Starting..." : "Start Session"}
+        </button>
+        <button
+          className="open-drawing-btn"
+          data-testid="open-drawing-btn"
+          disabled={isOpening}
+          onClick={handleOpenFile}
+        >
+          {isOpening ? "Opening..." : "Open a saved drawing…"}
+        </button>
+      </div>
     </div>
   );
 }

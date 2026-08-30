@@ -202,6 +202,7 @@ func (s *FeedbackService) doRequestFeedback(sessionID string, existing model.Fee
 		if getErr == nil {
 			if lineArtExtracted {
 				existing.ReferenceLineArt = "data:image/png;base64," + base64.StdEncoding.EncodeToString(refLineArt)
+				s.saveAnalysisImage(sessionID, referenceLineArtFile, refLineArt)
 			}
 			s.populateHeatmap(&existing, refLineArt, drawingData)
 			return existing, nil
@@ -212,6 +213,7 @@ func (s *FeedbackService) doRequestFeedback(sessionID string, existing model.Fee
 
 	if lineArtExtracted {
 		feedback.ReferenceLineArt = "data:image/png;base64," + base64.StdEncoding.EncodeToString(refLineArt)
+		s.saveAnalysisImage(sessionID, referenceLineArtFile, refLineArt)
 	}
 	s.populateHeatmap(&feedback, refLineArt, drawingData)
 
@@ -225,6 +227,51 @@ func (s *FeedbackService) doRequestFeedback(sessionID string, existing model.Fee
 	)
 
 	return feedback, nil
+}
+
+// The scores and the written feedback go to the database, but the two images
+// the analysis produces — the reference line art and the comparison heatmap —
+// used to be rebuilt by calling the inference service every time a result was
+// looked at again. Looking back at an old result is exactly when that service
+// is least likely to be running, which left the artist with the numbers and
+// none of the pictures.
+//
+// They are written next to the drawing instead, so a result opens the same way
+// however long afterwards, and costs no inference to revisit.
+const (
+	referenceLineArtFile  = "reference-line-art.png"
+	comparisonHeatmapFile = "comparison-heatmap.png"
+)
+
+func (s *FeedbackService) analysisDir(sessionID string) string {
+	return filepath.Join(s.dataDir, "feedback", sessionID)
+}
+
+// saveAnalysisImage keeps a picture the analysis produced. A failure to write
+// it costs a revisit an inference call, not the result, so it is logged rather
+// than surfaced.
+func (s *FeedbackService) saveAnalysisImage(sessionID string, name string, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	dir := s.analysisDir(sessionID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Error("failed to create analysis directory", "sessionID", sessionID, "directory", dir, "error", err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		slog.Error("failed to save analysis image", "sessionID", sessionID, "name", name, "error", err)
+	}
+}
+
+// loadAnalysisImage returns a saved picture as a data URI, or an empty string
+// when the result predates them being kept.
+func (s *FeedbackService) loadAnalysisImage(sessionID string, name string) string {
+	data, err := os.ReadFile(filepath.Join(s.analysisDir(sessionID), name))
+	if err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
 }
 
 func (s *FeedbackService) GetFeedback(sessionID string) (model.Feedback, error) {
@@ -243,6 +290,14 @@ func (s *FeedbackService) GetFeedback(sessionID string) (model.Feedback, error) 
 // for the session, then populates the transient fields (line art and heatmap).
 // Errors are logged but don't fail the request.
 func (s *FeedbackService) populateTransientFieldsForSession(feedback *model.Feedback, sessionID string) {
+	feedback.ReferenceLineArt = s.loadAnalysisImage(sessionID, referenceLineArtFile)
+	feedback.ComparisonHeatmap = s.loadAnalysisImage(sessionID, comparisonHeatmapFile)
+	if feedback.ReferenceLineArt != "" && feedback.ComparisonHeatmap != "" {
+		return
+	}
+
+	// A result from before the pictures were kept: rebuild them once, and
+	// save them so this is the last time.
 	session, err := s.sessionRepo.Get(sessionID)
 	if err != nil {
 		slog.Error("failed to get session for transient fields", "sessionID", sessionID, "error", err)
@@ -270,6 +325,7 @@ func (s *FeedbackService) populateTransientFieldsForSession(feedback *model.Feed
 			refLineArt = refData
 		} else {
 			feedback.ReferenceLineArt = "data:image/png;base64," + base64.StdEncoding.EncodeToString(refLineArt)
+			s.saveAnalysisImage(sessionID, referenceLineArtFile, refLineArt)
 		}
 	} else {
 		refLineArt = refData
@@ -309,4 +365,5 @@ func (s *FeedbackService) populateHeatmap(feedback *model.Feedback, refLineArt [
 		return
 	}
 	feedback.ComparisonHeatmap = "data:image/png;base64," + base64.StdEncoding.EncodeToString(heatmapBytes)
+	s.saveAnalysisImage(feedback.SessionID, comparisonHeatmapFile, heatmapBytes)
 }

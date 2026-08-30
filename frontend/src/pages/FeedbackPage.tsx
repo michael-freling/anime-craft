@@ -6,7 +6,10 @@ import SideBySideComparison from "../components/feedback/SideBySideComparison";
 import { RequestFeedback } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/feedbackservice.js";
 import { GetSession } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/sessionservice.js";
 import { GetReferenceImageData } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/referenceservice.js";
-import { GetDrawingImageData } from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
+import {
+  GetDrawingImageData,
+  ResumeDrawing,
+} from "../../bindings/github.com/michael-freling/anime-craft/gateway/internal/bff/drawingservice.js";
 import { debugLog } from "../utils/debugLog";
 
 interface FeedbackData {
@@ -30,6 +33,27 @@ function FeedbackPage() {
   const [drawingImageUrl, setDrawingImageUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+
+  // Feedback is most useful with the drawing still in front of you. Carrying
+  // on opens a new session holding this drawing, so the submitted attempt and
+  // the feedback on it stay as they are.
+  const handleKeepDrawing = async () => {
+    if (!id) return;
+    setResuming(true);
+    setResumeError(null);
+    try {
+      const session = await ResumeDrawing(id);
+      navigate(`/session/${session.id}`);
+    } catch (e) {
+      console.error("FeedbackPage: could not carry on from the drawing:", e);
+      setResumeError(
+        e instanceof Error ? e.message : "Could not open the drawing",
+      );
+      setResuming(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -141,13 +165,30 @@ function FeedbackPage() {
         improvements={feedback.improvements}
       />
 
-      <button
-        className="start-session-btn feedback-new-btn"
-        data-testid="new-session-btn"
-        onClick={() => navigate("/")}
-      >
-        Start New Session
-      </button>
+      {resumeError && (
+        <p className="home-error" data-testid="feedback-resume-error">
+          {resumeError}
+        </p>
+      )}
+
+      <div className="feedback-actions">
+        <button
+          className="start-session-btn feedback-new-btn"
+          data-testid="keep-drawing-btn"
+          disabled={resuming}
+          onClick={handleKeepDrawing}
+          title="Carry on from this drawing in a new session, working on what the feedback suggests"
+        >
+          {resuming ? "Opening..." : "Keep drawing on this"}
+        </button>
+        <button
+          className="open-drawing-btn feedback-new-btn"
+          data-testid="new-session-btn"
+          onClick={() => navigate("/")}
+        >
+          Start New Session
+        </button>
+      </div>
     </div>
   );
 }
